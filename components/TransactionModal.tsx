@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Calculator, Loader2, Check } from 'lucide-react';
+import { X, Calculator, Loader2, Check, CheckCircle } from 'lucide-react';
 import { Transaction, TransactionType } from '../types';
 import { TRANSACTION_CATEGORIES } from '../constants';
 
@@ -19,7 +19,9 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
   const [category, setCategory] = useState('Alimentação');
   const [note, setNote] = useState('');
   const [isPj, setIsPj] = useState(false);
+  
   const [isSaving, setIsSaving] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
 
   // PJ Logic
@@ -42,6 +44,8 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
       setIsPj(false);
       setCurrentGross('');
     }
+    setIsSuccess(false);
+    setIsSaving(false);
   }, [initialData, isOpen]);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -66,14 +70,20 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
 
     try {
       await onSave(tx);
-    } finally {
+      setIsSuccess(true);
+      // Mantém o modal aberto por 800ms para o usuário ver a animação de sucesso
+      setTimeout(() => {
+        onClose();
+      }, 800);
+    } catch (err) {
+      console.error(err);
       setIsSaving(false);
     }
   };
 
   const calculatePjNet = () => {
     setIsCalculating(true);
-    // Simula um delay para feedback visual
+    // Simula um delay para feedback visual de processamento
     setTimeout(() => {
       const gross = Math.max(0, parseFloat(currentGross) || 0);
       const das = gross * 0.06;
@@ -94,12 +104,24 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[92vh] border border-gray-100 dark:border-slate-800">
+      <div className={`bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] border border-gray-100 dark:border-slate-800 transition-all duration-300 ${isSuccess ? 'scale-[0.98] opacity-90' : 'scale-100'}`}>
+        
+        {/* Success Overlay */}
+        {isSuccess && (
+          <div className="absolute inset-0 z-[70] bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in zoom-in duration-300">
+            <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mb-4 animate-bounce">
+              <CheckCircle size={48} strokeWidth={3} />
+            </div>
+            <p className="text-xl font-black text-gray-900 dark:text-white tracking-tight">Salvo com Sucesso!</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Sincronizado no Firebase</p>
+          </div>
+        )}
+
         <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center shrink-0">
           <h2 className="text-xl font-black text-gray-900 dark:text-white tracking-tight">
             {initialData ? 'Editar Registro' : 'Novo Lançamento'}
           </h2>
-          <button onClick={onClose} disabled={isSaving} className="p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors disabled:opacity-50">
+          <button onClick={onClose} disabled={isSaving || isSuccess} className="p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors disabled:opacity-50">
             <X size={24} />
           </button>
         </div>
@@ -108,7 +130,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
           <div className="grid grid-cols-3 gap-2 p-1 bg-gray-100 dark:bg-slate-800 rounded-2xl shrink-0">
             <button
               type="button"
-              disabled={isSaving}
+              disabled={isSaving || isSuccess}
               onClick={() => { setType('EXPENSE'); setIsPj(false); }}
               className={`py-2 rounded-xl text-xs font-bold transition-all ${type === 'EXPENSE' && !isPj ? 'bg-white dark:bg-slate-700 text-rose-600 shadow-sm' : 'text-gray-500'}`}
             >
@@ -116,7 +138,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
             </button>
             <button
               type="button"
-              disabled={isSaving}
+              disabled={isSaving || isSuccess}
               onClick={() => { setType('INCOME'); setIsPj(false); }}
               className={`py-2 rounded-xl text-xs font-bold transition-all ${type === 'INCOME' && !isPj ? 'bg-white dark:bg-slate-700 text-emerald-600 shadow-sm' : 'text-gray-500'}`}
             >
@@ -124,7 +146,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
             </button>
             <button
               type="button"
-              disabled={isSaving}
+              disabled={isSaving || isSuccess}
               onClick={() => { setType('INCOME'); setIsPj(true); }}
               className={`py-2 rounded-xl text-xs font-bold transition-all ${isPj ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500'}`}
             >
@@ -138,7 +160,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
               <input
                 type="date"
                 required
-                disabled={isSaving}
+                disabled={isSaving || isSuccess}
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
@@ -148,7 +170,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
               <label className="block text-xs font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1.5">Categoria</label>
               <select
                 value={category}
-                disabled={isPj || isSaving}
+                disabled={isPj || isSaving || isSuccess}
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 text-sm disabled:opacity-50"
               >
@@ -159,7 +181,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
             </div>
           </div>
 
-          <div>
+          <div className={`transition-all duration-500 ${isCalculating ? 'opacity-50 blur-[1px]' : 'opacity-100 blur-0'}`}>
              <label className="block text-xs font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1.5">Valor Total</label>
              <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-400">R$</span>
@@ -168,7 +190,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
                   step="0.01"
                   min="0"
                   required
-                  disabled={isSaving}
+                  disabled={isSaving || isSuccess}
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
                   placeholder="0,00"
@@ -178,7 +200,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
           </div>
 
           {isPj && (
-            <div className="p-5 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800/50 rounded-2xl space-y-4">
+            <div className="p-5 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800/50 rounded-2xl space-y-4 animate-in slide-in-from-top-2 duration-300">
               <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-400">
                 <Calculator size={18} />
                 <span className="text-sm font-black uppercase tracking-tight">Calculadora PJ</span>
@@ -189,7 +211,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
                   <input
                     type="number"
                     min="0"
-                    disabled={isSaving || isCalculating}
+                    disabled={isSaving || isCalculating || isSuccess}
                     value={currentGross}
                     onChange={(e) => setCurrentGross(e.target.value)}
                     placeholder="R$ 0,00"
@@ -200,8 +222,8 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
               <button
                 type="button"
                 onClick={calculatePjNet}
-                disabled={isSaving || isCalculating || !currentGross}
-                className="w-full py-3 bg-indigo-600 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                disabled={isSaving || isCalculating || isSuccess || !currentGross}
+                className="w-full py-3 bg-indigo-600 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95"
               >
                 {isCalculating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calculator size={14} />}
                 {isCalculating ? 'Calculando...' : 'Calcular Líquido'}
@@ -212,7 +234,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
           <div>
             <label className="block text-xs font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1.5">Observação</label>
             <textarea
-              disabled={isSaving}
+              disabled={isSaving || isSuccess}
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="Ex: Almoço PJ, Freelance..."
@@ -225,11 +247,15 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
           <button
             type="submit"
             form="tx-form"
-            disabled={isSaving || isCalculating}
-            className="w-full py-4 bg-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-70"
+            disabled={isSaving || isCalculating || isSuccess}
+            className={`w-full py-4 font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-95 ${
+              isSuccess 
+              ? 'bg-emerald-600 text-white' 
+              : 'bg-indigo-600 text-white hover:bg-indigo-700'
+            } disabled:opacity-70`}
           >
-            {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check size={20} />}
-            {isSaving ? 'Salvando no Firebase...' : (initialData ? 'Atualizar Dados' : 'Confirmar Lançamento')}
+            {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : isSuccess ? <Check size={20} strokeWidth={3} /> : <Check size={20} />}
+            {isSaving ? 'Sincronizando...' : isSuccess ? 'Confirmado!' : (initialData ? 'Atualizar Dados' : 'Confirmar Lançamento')}
           </button>
         </div>
       </div>
