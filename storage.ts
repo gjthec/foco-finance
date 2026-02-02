@@ -1,6 +1,6 @@
 
 import { Transaction, Ledger, AuthState } from './types';
-import { db, auth } from './firebase';
+import { db, auth, FIREBASE_READY } from './firebase';
 import { 
   collection, 
   doc, 
@@ -8,10 +8,13 @@ import {
   setDoc, 
   deleteDoc, 
   query, 
-  where, 
   orderBy,
   getDoc
 } from 'firebase/firestore';
+
+// --- FLAG DE CONTROLE ---
+// Mude para TRUE apenas quando o Firebase estiver configurado no ambiente
+export const USE_FIREBASE = true;
 
 const KEYS = {
   AUTH: 'foco_finance_auth',
@@ -51,78 +54,84 @@ export const storage = {
     else document.documentElement.classList.remove('dark');
   },
 
-  // Firestore Operações para Transações
+  // --- TRANSAÇÕES ---
   getTransactions: async (): Promise<Transaction[]> => {
-    const user = auth.currentUser;
-    if (!user) return [];
-    
-    const q = query(
-      collection(db, 'users', user.uid, 'transactions'),
-      orderBy('date', 'desc')
-    );
-    
-    const snapshot = await getDocs(q);
-    const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-    localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(txs)); // Cache local
-    return txs;
+    if (USE_FIREBASE && auth.currentUser) {
+      try {
+        const q = query(collection(db, 'users', auth.currentUser.uid, 'transactions'), orderBy('date', 'desc'));
+        const snapshot = await getDocs(q);
+        const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
+        localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(txs));
+        return txs;
+      } catch (e) {
+        console.warn("Firestore fail, using local cache", e);
+      }
+    }
+    const data = localStorage.getItem(KEYS.TRANSACTIONS);
+    return data ? JSON.parse(data) : [];
   },
   saveTransaction: async (tx: Transaction) => {
-    const user = auth.currentUser;
-    if (!user) return;
-    await setDoc(doc(db, 'users', user.uid, 'transactions', tx.id), tx);
+    if (USE_FIREBASE && auth.currentUser) {
+      await setDoc(doc(db, 'users', auth.currentUser.uid, 'transactions', tx.id), tx);
+    }
+    const txs = await storage.getTransactions();
+    const index = txs.findIndex(t => t.id === tx.id);
+    if (index > -1) txs[index] = tx;
+    else txs.unshift(tx);
+    localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(txs));
   },
   deleteTransaction: async (id: string) => {
-    const user = auth.currentUser;
-    if (!user) return;
-    await deleteDoc(doc(db, 'users', user.uid, 'transactions', id));
+    if (USE_FIREBASE && auth.currentUser) {
+      await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'transactions', id));
+    }
+    const txs = await storage.getTransactions();
+    localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(txs.filter(t => t.id !== id)));
   },
 
-  // Firestore Operações para Ledgers (Dívidas)
+  // --- LEDGERS ---
   getLedgers: async (): Promise<Ledger[]> => {
-    const user = auth.currentUser;
-    if (!user) return [];
-    
-    const q = query(collection(db, 'users', user.uid, 'ledgers'));
-    const snapshot = await getDocs(q);
-    const ledgers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ledger));
-    localStorage.setItem(KEYS.LEDGERS, JSON.stringify(ledgers));
-    return ledgers;
+    if (USE_FIREBASE && auth.currentUser) {
+      try {
+        const q = query(collection(db, 'users', auth.currentUser.uid, 'ledgers'));
+        const snapshot = await getDocs(q);
+        const ldgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ledger));
+        localStorage.setItem(KEYS.LEDGERS, JSON.stringify(ldgs));
+        return ldgs;
+      } catch (e) {
+        console.warn("Firestore fail, using local cache", e);
+      }
+    }
+    const data = localStorage.getItem(KEYS.LEDGERS);
+    return data ? JSON.parse(data) : [];
   },
   saveLedger: async (ledger: Ledger) => {
-    const user = auth.currentUser;
-    if (!user) return;
-    await setDoc(doc(db, 'users', user.uid, 'ledgers', ledger.id), ledger);
-    
-    // Se habilitado para leitura pública, duplicar em uma coleção raiz para acesso via slug
-    if (ledger.publicReadEnabled) {
-      await setDoc(doc(db, 'public_ledgers', ledger.publicSlug), {
-        ...ledger,
-        ownerId: user.uid,
-        updatedAt: Date.now()
-      });
-    } else {
-      await deleteDoc(doc(db, 'public_ledgers', ledger.publicSlug)).catch(() => {});
+    if (USE_FIREBASE && auth.currentUser) {
+      await setDoc(doc(db, 'users', auth.currentUser.uid, 'ledgers', ledger.id), ledger);
+      if (ledger.publicReadEnabled) {
+        await setDoc(doc(db, 'public_ledgers', ledger.publicSlug), { ...ledger, ownerId: auth.currentUser.uid });
+      } else {
+        await deleteDoc(doc(db, 'public_ledgers', ledger.publicSlug)).catch(() => {});
+      }
     }
+    const ldgs = await storage.getLedgers();
+    const index = ldgs.findIndex(l => l.id === ledger.id);
+    if (index > -1) ldgs[index] = ledger;
+    else ldgs.unshift(ledger);
+    localStorage.setItem(KEYS.LEDGERS, JSON.stringify(ldgs));
   },
-  // Fix for error in LedgerDetail.tsx: syncPublicLedger call
   syncPublicLedger: async (ledger: Ledger) => {
-    const user = auth.currentUser;
-    if (!user) return;
-    if (ledger.publicReadEnabled) {
-      await setDoc(doc(db, 'public_ledgers', ledger.publicSlug), {
-        ...ledger,
-        ownerId: user.uid,
-        updatedAt: Date.now()
-      });
-    } else {
-      await deleteDoc(doc(db, 'public_ledgers', ledger.publicSlug)).catch(() => {});
-    }
+    await storage.saveLedger(ledger);
   },
   getLedgerBySlug: async (slug: string): Promise<Ledger | undefined> => {
-    const docSnap = await getDoc(doc(db, 'public_ledgers', slug));
-    if (docSnap.exists()) {
-      return docSnap.data() as Ledger;
+    if (USE_FIREBASE) {
+      try {
+        const docSnap = await getDoc(doc(db, 'public_ledgers', slug));
+        if (docSnap.exists()) return docSnap.data() as Ledger;
+      } catch (e) {
+        console.warn("Public slug fetch failed", e);
+      }
     }
-    return undefined;
+    const ldgs = await storage.getLedgers();
+    return ldgs.find(l => l.publicSlug === slug);
   }
 };
