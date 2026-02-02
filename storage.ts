@@ -8,13 +8,16 @@ import {
   setDoc, 
   deleteDoc, 
   query, 
-  where,
+  where, 
+  orderBy,
   getDoc
 } from 'firebase/firestore';
 
 const KEYS = {
   AUTH: 'foco_finance_auth',
-  THEME: 'foco_finance_theme'
+  THEME: 'foco_finance_theme',
+  TRANSACTIONS: 'foco_finance_transactions',
+  LEDGERS: 'foco_finance_ledgers'
 };
 
 export const storage = {
@@ -48,51 +51,78 @@ export const storage = {
     else document.documentElement.classList.remove('dark');
   },
 
-  // Operações Firestore para Transações
+  // Firestore Operações para Transações
   getTransactions: async (): Promise<Transaction[]> => {
     const user = auth.currentUser;
     if (!user) return [];
-    const q = query(collection(db, `users/${user.uid}/transactions`));
+    
+    const q = query(
+      collection(db, 'users', user.uid, 'transactions'),
+      orderBy('date', 'desc')
+    );
+    
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
+    const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
+    localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(txs)); // Cache local
+    return txs;
   },
   saveTransaction: async (tx: Transaction) => {
     const user = auth.currentUser;
     if (!user) return;
-    await setDoc(doc(db, `users/${user.uid}/transactions`, tx.id), tx);
+    await setDoc(doc(db, 'users', user.uid, 'transactions', tx.id), tx);
   },
   deleteTransaction: async (id: string) => {
     const user = auth.currentUser;
     if (!user) return;
-    await deleteDoc(doc(db, `users/${user.uid}/transactions`, id));
+    await deleteDoc(doc(db, 'users', user.uid, 'transactions', id));
   },
 
-  // Operações Firestore para Ledgers (Dívidas)
+  // Firestore Operações para Ledgers (Dívidas)
   getLedgers: async (): Promise<Ledger[]> => {
     const user = auth.currentUser;
     if (!user) return [];
-    const q = query(collection(db, `users/${user.uid}/ledgers`));
+    
+    const q = query(collection(db, 'users', user.uid, 'ledgers'));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ledger));
+    const ledgers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Ledger));
+    localStorage.setItem(KEYS.LEDGERS, JSON.stringify(ledgers));
+    return ledgers;
   },
   saveLedger: async (ledger: Ledger) => {
     const user = auth.currentUser;
     if (!user) return;
-    await setDoc(doc(db, `users/${user.uid}/ledgers`, ledger.id), ledger);
+    await setDoc(doc(db, 'users', user.uid, 'ledgers', ledger.id), ledger);
+    
+    // Se habilitado para leitura pública, duplicar em uma coleção raiz para acesso via slug
+    if (ledger.publicReadEnabled) {
+      await setDoc(doc(db, 'public_ledgers', ledger.publicSlug), {
+        ...ledger,
+        ownerId: user.uid,
+        updatedAt: Date.now()
+      });
+    } else {
+      await deleteDoc(doc(db, 'public_ledgers', ledger.publicSlug)).catch(() => {});
+    }
+  },
+  // Fix for error in LedgerDetail.tsx: syncPublicLedger call
+  syncPublicLedger: async (ledger: Ledger) => {
+    const user = auth.currentUser;
+    if (!user) return;
+    if (ledger.publicReadEnabled) {
+      await setDoc(doc(db, 'public_ledgers', ledger.publicSlug), {
+        ...ledger,
+        ownerId: user.uid,
+        updatedAt: Date.now()
+      });
+    } else {
+      await deleteDoc(doc(db, 'public_ledgers', ledger.publicSlug)).catch(() => {});
+    }
   },
   getLedgerBySlug: async (slug: string): Promise<Ledger | undefined> => {
-    // Para acesso público, precisamos de uma query diferente ou uma estrutura flat
-    const q = query(collection(db, 'public_ledgers'), where('publicSlug', '==', slug));
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) return undefined;
-    return snapshot.docs[0].data() as Ledger;
-  },
-  // Método auxiliar para atualizar slug público (opcional, para facilitar busca)
-  syncPublicLedger: async (ledger: Ledger) => {
-    if (ledger.publicReadEnabled) {
-      await setDoc(doc(db, 'public_ledgers', ledger.publicSlug), ledger);
-    } else {
-      await deleteDoc(doc(db, 'public_ledgers', ledger.publicSlug));
+    const docSnap = await getDoc(doc(db, 'public_ledgers', slug));
+    if (docSnap.exists()) {
+      return docSnap.data() as Ledger;
     }
+    return undefined;
   }
 };
