@@ -4,6 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Share2, Plus, Copy, CheckCircle2, Trash2, Clock, ShieldCheck, X, Calendar, ArrowUpRight, ArrowDownLeft, Loader2, Check } from 'lucide-react';
 import { Ledger, LedgerEntry } from '../types';
 import { storage } from '../storage';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) => {
   const { id, slug } = useParams();
@@ -12,6 +13,9 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
   const [showAddModal, setShowAddModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
+  
+  // Confirmação de Exclusão
+  const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: string | null }>({ isOpen: false, id: null });
   
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
 
@@ -64,7 +68,6 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
       await storage.syncPublicLedger(updated);
     } catch (error) {
       console.error("Error updating ledger:", error);
-      alert("Erro ao sincronizar. Tente novamente.");
     } finally {
       setIsSaving(false);
     }
@@ -92,10 +95,7 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
     const description = formData.get('description') as string;
     const date = formData.get('date') as string;
 
-    if (isNaN(amount) || amount < 0) {
-      alert("O valor não pode ser negativo.");
-      return;
-    }
+    if (isNaN(amount) || amount < 0) return;
 
     const newEntry: LedgerEntry = {
       id: Math.random().toString(36).substr(2, 9),
@@ -119,11 +119,10 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
     });
   };
 
-  const deleteEntry = (entryId: string) => {
-    if (!ledger) return;
-    if (confirm('Excluir este item da dívida?')) {
-      updateLedger({ ...ledger, entries: ledger.entries.filter(e => e.id !== entryId) });
-    }
+  const executeDelete = () => {
+    const entryId = confirmDelete.id;
+    if (!ledger || !entryId) return;
+    updateLedger({ ...ledger, entries: ledger.entries.filter(e => e.id !== entryId) });
   };
 
   const formatBRL = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -263,7 +262,7 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
                     <CheckCircle2 size={20} strokeWidth={2.5} />
                   </button>
                   <button
-                    onClick={() => deleteEntry(entry.id)}
+                    onClick={() => setConfirmDelete({ isOpen: true, id: entry.id })}
                     disabled={isSaving}
                     className="p-2.5 text-gray-300 dark:text-gray-700 hover:text-rose-600 transition-all active:scale-90 disabled:opacity-50"
                   >
@@ -275,6 +274,15 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
           ))
         )}
       </div>
+
+      <ConfirmDialog 
+        isOpen={confirmDelete.isOpen}
+        onClose={() => setConfirmDelete({ isOpen: false, id: null })}
+        onConfirm={executeDelete}
+        title="Excluir Lançamento"
+        message="Deseja realmente remover este item da divisão de gastos? Esta ação é irreversível."
+        confirmLabel="Sim, Remover"
+      />
 
       {showAddModal && (
         <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center p-0 md:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">

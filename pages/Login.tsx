@@ -1,9 +1,9 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Wallet, Lock, Mail, User, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
-import { storage } from '../storage';
-import { auth, googleProvider } from '../firebase';
+import { Wallet, Lock, Mail, User, ArrowRight, Loader2, AlertCircle, Database } from 'lucide-react';
+import { storage, USE_FIREBASE } from '../storage';
+import { auth, googleProvider, FIREBASE_READY } from '../firebase';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -30,24 +30,42 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     setError(null);
     
     try {
-      if (mode === 'signup') {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        await updateProfile(userCredential.user, { displayName: name });
+      if (USE_FIREBASE) {
+        if (mode === 'signup') {
+          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+          await updateProfile(userCredential.user, { displayName: name });
+        } else {
+          await signInWithEmailAndPassword(auth, email, password);
+        }
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        // Simulação de login local
+        storage.setAuth(email || "convidado@foco.com", name || "Usuário Local");
       }
       
       if (onLoginSuccess) onLoginSuccess();
       navigate('/dashboard');
     } catch (err: any) {
-      console.error(err);
       setError(err.message || "Erro na autenticação. Verifique os dados.");
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleBypass = () => {
+    setIsLoading(true);
+    setTimeout(() => {
+      storage.setAuth("demo@foco.com", "Usuário Demo");
+      if (onLoginSuccess) onLoginSuccess();
+      navigate('/dashboard');
+      setIsLoading(false);
+    }, 500);
+  };
+
   const handleGoogleAuth = async () => {
+    if (!USE_FIREBASE) {
+      handleBypass();
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
@@ -64,7 +82,14 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950 p-4 transition-colors">
       <div className="w-full max-w-[440px] bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl p-8 md:p-10 border border-gray-100 dark:border-slate-800 relative overflow-hidden">
-        <div className="flex flex-col items-center mb-8 relative">
+        
+        {!USE_FIREBASE && (
+          <div className="absolute top-0 left-0 right-0 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-black uppercase tracking-widest text-center py-2 border-b border-amber-500/20">
+            Modo de Desenvolvimento (Local)
+          </div>
+        )}
+
+        <div className="flex flex-col items-center mb-8 mt-4 relative">
           <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center mb-6 shadow-xl shadow-indigo-200 dark:shadow-none">
             <Wallet className="text-white w-7 h-7" />
           </div>
@@ -79,17 +104,30 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={handleGoogleAuth}
-          disabled={isLoading}
-          className="w-full py-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 font-bold rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-3 active:scale-[0.98] disabled:opacity-70 mb-6"
-        >
-          <img src="https://www.google.com/favicon.ico" className="w-4 h-4" alt="Google" />
-          <span className="text-sm">Continuar com Google</span>
-        </button>
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={handleGoogleAuth}
+            disabled={isLoading}
+            className="w-full py-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-200 font-bold rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-3 active:scale-[0.98] disabled:opacity-70"
+          >
+            <img src="https://www.google.com/favicon.ico" className="w-4 h-4" alt="Google" />
+            <span className="text-sm">Continuar com Google</span>
+          </button>
 
-        <div className="relative flex items-center gap-4 mb-6">
+          {!USE_FIREBASE && (
+            <button
+              type="button"
+              onClick={handleBypass}
+              className="w-full py-3.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-xs font-black uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 border border-indigo-100 dark:border-indigo-800/30"
+            >
+              <Database size={14} />
+              Acesso Rápido Local
+            </button>
+          )}
+        </div>
+
+        <div className="relative flex items-center gap-4 my-6">
           <div className="flex-1 h-[1px] bg-gray-100 dark:bg-slate-800" />
           <span className="text-[10px] font-black text-gray-300 dark:text-slate-600 uppercase tracking-widest">ou e-mail</span>
           <div className="flex-1 h-[1px] bg-gray-100 dark:bg-slate-800" />

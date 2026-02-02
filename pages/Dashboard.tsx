@@ -5,6 +5,7 @@ import { Transaction, TransactionType, Ledger } from '../types';
 import { storage } from '../storage';
 import { TRANSACTION_CATEGORIES } from '../constants';
 import TransactionModal from '../components/TransactionModal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { useNavigate } from 'react-router-dom';
 
 const Dashboard: React.FC = () => {
@@ -14,6 +15,9 @@ const Dashboard: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | undefined>();
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Confirmação de Exclusão
+  const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: string | null }>({ isOpen: false, id: null });
   
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [searchTerm, setSearchTerm] = useState('');
@@ -31,7 +35,7 @@ const Dashboard: React.FC = () => {
       setTransactions(txs);
       setLedgers(ldgs);
     } catch (e) {
-      console.error("Erro ao carregar dados do Firebase", e);
+      console.error("Erro ao carregar dados", e);
     } finally {
       setIsLoading(false);
     }
@@ -55,21 +59,21 @@ const Dashboard: React.FC = () => {
       await storage.saveTransaction(newTx);
       loadData();
     } catch (e) {
-      alert("Erro ao salvar transação no servidor.");
+      // Aqui poderíamos ter um Toast futuramente
       throw e;
     }
   };
 
-  const deleteTx = async (id: string) => {
-    if (confirm('Deseja excluir este lançamento?')) {
-      const oldTransactions = [...transactions];
-      setTransactions(prev => prev.filter(tx => tx.id !== id));
-      try {
-        await storage.deleteTransaction(id);
-      } catch (e) {
-        setTransactions(oldTransactions);
-        alert("Erro ao excluir transação no servidor.");
-      }
+  const executeDelete = async () => {
+    const id = confirmDelete.id;
+    if (!id) return;
+
+    const oldTransactions = [...transactions];
+    setTransactions(prev => prev.filter(tx => tx.id !== id));
+    try {
+      await storage.deleteTransaction(id);
+    } catch (e) {
+      setTransactions(oldTransactions);
     }
   };
 
@@ -121,10 +125,10 @@ const Dashboard: React.FC = () => {
   const formatBRL = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
   return (
-    <div className="space-y-6 pb-20 md:pb-0">
+    <div className="space-y-6 pb-12">
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <div>
+          <div className="hidden md:block">
             <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight leading-none mb-1">Fluxo</h1>
             <p className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-[0.2em]">Gestão em Tempo Real</p>
           </div>
@@ -260,7 +264,7 @@ const Dashboard: React.FC = () => {
                       <button onClick={() => { setEditingTx(tx); setIsModalOpen(true); }} className="p-3 text-gray-400 hover:text-indigo-600 active:bg-gray-100 dark:active:bg-slate-800 rounded-xl transition-colors">
                         <Edit2 size={20} />
                       </button>
-                      <button onClick={() => deleteTx(tx.id)} className="p-3 text-gray-400 hover:text-rose-600 active:bg-rose-50 rounded-xl transition-colors">
+                      <button onClick={() => setConfirmDelete({ isOpen: true, id: tx.id })} className="p-3 text-gray-400 hover:text-rose-600 active:bg-rose-50 rounded-xl transition-colors">
                         <Trash2 size={20} />
                       </button>
                     </>
@@ -273,6 +277,15 @@ const Dashboard: React.FC = () => {
       </div>
 
       <TransactionModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingTx(undefined); }} onSave={saveTx} initialData={editingTx} existingTransactions={transactions} />
+      
+      <ConfirmDialog 
+        isOpen={confirmDelete.isOpen}
+        onClose={() => setConfirmDelete({ isOpen: false, id: null })}
+        onConfirm={executeDelete}
+        title="Excluir Registro"
+        message="Tem certeza que deseja remover este lançamento? Esta ação não pode ser desfeita."
+        confirmLabel="Sim, Excluir"
+      />
     </div>
   );
 };
