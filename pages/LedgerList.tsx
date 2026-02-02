@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Users, ArrowRight, Share2, X, UserPlus, Loader2 } from 'lucide-react';
+import { Plus, Users, ArrowRight, Share2, X, UserPlus, Loader2, Check } from 'lucide-react';
 import { Ledger } from '../types';
 import { storage } from '../storage';
 
@@ -9,6 +9,7 @@ const LedgerList: React.FC = () => {
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [newLedgerName, setNewLedgerName] = useState('');
   const [newFriendName, setNewFriendName] = useState('');
 
@@ -26,6 +27,7 @@ const LedgerList: React.FC = () => {
   const handleCreateLedger = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newLedgerName && newFriendName) {
+      setIsSaving(true);
       const newLedger: Ledger = {
         id: Math.random().toString(36).substr(2, 9),
         title: newLedgerName,
@@ -34,12 +36,18 @@ const LedgerList: React.FC = () => {
         publicReadEnabled: false,
         entries: []
       };
-      setIsLoading(true);
-      await storage.saveLedger(newLedger);
-      await loadData();
-      setNewLedgerName('');
-      setNewFriendName('');
-      setIsModalOpen(false);
+      
+      try {
+        await storage.saveLedger(newLedger);
+        await loadData();
+        setNewLedgerName('');
+        setNewFriendName('');
+        setIsModalOpen(false);
+      } catch (err) {
+        alert("Erro ao criar ledger.");
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -119,19 +127,26 @@ const LedgerList: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 border border-gray-100 dark:border-slate-800">
             <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center">
               <h2 className="text-xl font-black dark:text-white tracking-tight">Nova Conta Compartilhada</h2>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors"><X size={20} /></button>
+              <button onClick={() => setIsModalOpen(false)} disabled={isSaving} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors disabled:opacity-50"><X size={20} /></button>
             </div>
             <form onSubmit={handleCreateLedger} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5">Nome do Amigo / Pessoa</label>
-                <input required type="text" value={newFriendName} onChange={(e) => setNewFriendName(e.target.value)} placeholder="Ex: João Silva" className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500" />
+                <input required disabled={isSaving} type="text" value={newFriendName} onChange={(e) => setNewFriendName(e.target.value)} placeholder="Ex: João Silva" className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50" />
               </div>
               <div>
                 <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5">Título / Referência</label>
-                <input required type="text" value={newLedgerName} onChange={(e) => setNewLedgerName(e.target.value)} placeholder="Ex: Aluguel, Viagem..." className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500" />
+                <input required disabled={isSaving} type="text" value={newLedgerName} onChange={(e) => setNewLedgerName(e.target.value)} placeholder="Ex: Aluguel, Viagem..." className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50" />
               </div>
               <div className="pt-4">
-                <button type="submit" className="w-full py-4 bg-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all active:scale-95">Criar Ledger</button>
+                <button 
+                  type="submit" 
+                  disabled={isSaving}
+                  className="w-full py-4 bg-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70"
+                >
+                  {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check size={20} />}
+                  {isSaving ? 'Criando no Firestore...' : 'Criar Ledger'}
+                </button>
               </div>
             </form>
           </div>

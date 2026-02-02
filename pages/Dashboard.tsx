@@ -41,16 +41,25 @@ const Dashboard: React.FC = () => {
   }, []);
 
   const saveTx = async (newTx: Transaction) => {
-    setIsLoading(true);
     try {
       await storage.saveTransaction(newTx);
-      await loadData(); // Recarrega para garantir consistência
+      // Atualiza localmente primeiro para ser instantâneo após a confirmação do Firebase
+      setTransactions(prev => {
+        const index = prev.findIndex(t => t.id === newTx.id);
+        if (index > -1) {
+          const updated = [...prev];
+          updated[index] = newTx;
+          return updated;
+        }
+        return [newTx, ...prev];
+      });
       setIsModalOpen(false);
       setEditingTx(undefined);
+      // Sincroniza o estado completo em background
+      loadData();
     } catch (e) {
       alert("Erro ao salvar transação");
-    } finally {
-      setIsLoading(false);
+      throw e; // Lança para o modal saber que falhou
     }
   };
 

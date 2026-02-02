@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Share2, Plus, Copy, CheckCircle2, Trash2, Clock, ShieldCheck, Wallet, X, Calendar, ArrowUpRight, ArrowDownLeft, ExternalLink } from 'lucide-react';
+// Added 'Check' to the imports from lucide-react
+import { ArrowLeft, Share2, Plus, Copy, CheckCircle2, Trash2, Clock, ShieldCheck, Wallet, X, Calendar, ArrowUpRight, ArrowDownLeft, ExternalLink, Loader2, Check } from 'lucide-react';
 import { Ledger, LedgerEntry } from '../types';
 import { storage } from '../storage';
 
@@ -10,11 +11,11 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
   const navigate = useNavigate();
   const [ledger, setLedger] = useState<Ledger | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
   
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
 
-  // Correctly handling async storage calls within useEffect
   useEffect(() => {
     const fetchData = async () => {
       if (isPublic && slug) {
@@ -49,15 +50,18 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
     }, { mePaid: 0, friendPaid: 0 });
   }, [monthlyEntries]);
 
-  // Use the correct singular saveLedger method and await it, also syncing public status
   const updateLedger = async (updated: Ledger) => {
     if (isPublic) return;
+    setIsSaving(true);
     setLedger(updated);
     try {
       await storage.saveLedger(updated);
       await storage.syncPublicLedger(updated);
     } catch (error) {
       console.error("Error updating ledger:", error);
+      alert("Erro ao sincronizar. Tente novamente.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -74,7 +78,7 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
     setTimeout(() => setCopyFeedback(false), 2000);
   };
 
-  const addEntry = (e: React.FormEvent<HTMLFormElement>) => {
+  const addEntry = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!ledger) return;
     const formData = new FormData(e.currentTarget);
@@ -98,7 +102,7 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
       status: 'open'
     };
 
-    updateLedger({ ...ledger, entries: [newEntry, ...ledger.entries] });
+    await updateLedger({ ...ledger, entries: [newEntry, ...ledger.entries] });
     setShowAddModal(false);
   };
 
@@ -141,6 +145,7 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+             {isSaving && <Loader2 className="w-5 h-5 text-indigo-600 animate-spin mr-2" />}
             <div className="relative">
               <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
               <input
@@ -155,6 +160,7 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
                 <div className="flex bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
                   <button
                     onClick={togglePublic}
+                    disabled={isSaving}
                     className={`p-2.5 transition-all ${ledger.publicReadEnabled ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' : 'text-gray-400'}`}
                     title="Ativar Link Público"
                   >
@@ -172,7 +178,8 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
                 </div>
                 <button
                   onClick={() => setShowAddModal(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-black uppercase text-xs tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-100 dark:shadow-none transition-all active:scale-95"
+                  disabled={isSaving}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-black uppercase text-xs tracking-widest hover:bg-indigo-700 shadow-lg transition-all active:scale-95 disabled:opacity-50"
                 >
                   <Plus size={18} /> Novo Item
                 </button>
@@ -256,13 +263,15 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
                   <div className="flex gap-1 shrink-0">
                      <button
                       onClick={() => markPaid(entry.id)}
-                      className={`p-2 rounded-lg transition-all ${entry.status === 'paid' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' : 'text-gray-300 dark:text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/10'}`}
+                      disabled={isSaving}
+                      className={`p-2 rounded-lg transition-all ${entry.status === 'paid' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' : 'text-gray-300 dark:text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/10'} disabled:opacity-50`}
                     >
                       <CheckCircle2 size={18} />
                     </button>
                     <button
                       onClick={() => deleteEntry(entry.id)}
-                      className="p-2 text-gray-300 dark:text-gray-600 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/10 transition-all"
+                      disabled={isSaving}
+                      className="p-2 text-gray-300 dark:text-gray-600 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/10 transition-all disabled:opacity-50"
                     >
                       <Trash2 size={18} />
                     </button>
@@ -279,32 +288,32 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
           <div className="bg-white dark:bg-slate-900 w-full max-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[90vh] border border-gray-100 dark:border-slate-800">
             <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center shrink-0">
               <h2 className="text-xl font-black dark:text-white tracking-tight">Novo Gasto Dividido</h2>
-              <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors"><X size={20} /></button>
+              <button onClick={() => setShowAddModal(false)} disabled={isSaving} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors disabled:opacity-50"><X size={20} /></button>
             </div>
             <form onSubmit={addEntry} className="p-6 space-y-4 overflow-y-auto">
               <div>
                 <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5">Descrição do Gasto</label>
-                <input required name="description" placeholder="Ex: Pizza, Mercado, Uber..." className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500" />
+                <input required disabled={isSaving} name="description" placeholder="Ex: Pizza, Mercado, Uber..." className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5">Valor Total (R$)</label>
-                  <input required type="number" step="0.01" min="0" name="amount" placeholder="0,00" className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-lg font-black dark:text-white outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <input required disabled={isSaving} type="number" step="0.01" min="0" name="amount" placeholder="0,00" className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-lg font-black dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50" />
                 </div>
                 <div>
                   <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5">Data</label>
-                  <input required type="date" name="date" defaultValue={new Date().toISOString().slice(0, 10)} className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-sm font-bold dark:text-white outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <input required disabled={isSaving} type="date" name="date" defaultValue={new Date().toISOString().slice(0, 10)} className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-sm font-bold dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50" />
                 </div>
               </div>
               <div>
                 <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5">Quem pagou?</label>
                 <div className="grid grid-cols-2 gap-2">
                   <label className="relative flex items-center justify-center gap-2 p-3 border border-gray-100 dark:border-slate-700 rounded-xl cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 transition-all has-[:checked]:bg-indigo-600 has-[:checked]:border-indigo-600 has-[:checked]:text-white dark:text-gray-300">
-                    <input type="radio" name="paidBy" value="me" defaultChecked className="hidden" />
+                    <input type="radio" name="paidBy" value="me" defaultChecked disabled={isSaving} className="hidden" />
                     <span className="text-xs font-black uppercase tracking-widest">Eu Paguei</span>
                   </label>
                   <label className="relative flex items-center justify-center gap-2 p-3 border border-gray-100 dark:border-slate-700 rounded-xl cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 transition-all has-[:checked]:bg-indigo-600 has-[:checked]:border-indigo-600 has-[:checked]:text-white dark:text-gray-300">
-                    <input type="radio" name="paidBy" value="friend" className="hidden" />
+                    <input type="radio" name="paidBy" value="friend" disabled={isSaving} className="hidden" />
                     <span className="text-xs font-black uppercase tracking-widest">{ledger.friendName}</span>
                   </label>
                 </div>
@@ -313,13 +322,15 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
             <div className="p-6 border-t border-gray-100 dark:border-slate-800 shrink-0">
               <button 
                 type="submit"
+                disabled={isSaving}
                 onClick={(e) => {
                   const form = (e.currentTarget.parentElement?.previousElementSibling as HTMLFormElement);
                   if(form.reportValidity()) form.requestSubmit();
                 }} 
-                className="w-full py-4 bg-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all active:scale-95"
+                className="w-full py-4 bg-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70"
               >
-                Salvar Item
+                {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check size={20} />}
+                {isSaving ? 'Salvando no Firebase...' : 'Salvar Item'}
               </button>
             </div>
           </div>
