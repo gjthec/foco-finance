@@ -28,6 +28,12 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
   const [currentGross, setCurrentGross] = useState<string>('');
 
   useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    
     if (initialData) {
       setDate(initialData.date);
       setType(initialData.type);
@@ -71,7 +77,6 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
     try {
       await onSave(tx);
       setIsSuccess(true);
-      // Mantém o modal aberto por 800ms para o usuário ver a animação de sucesso
       setTimeout(() => {
         onClose();
       }, 800);
@@ -83,7 +88,6 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
 
   const calculatePjNet = () => {
     setIsCalculating(true);
-    // Simula um delay para feedback visual de processamento
     setTimeout(() => {
       const gross = Math.max(0, parseFloat(currentGross) || 0);
       const das = gross * 0.06;
@@ -103,9 +107,14 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className={`bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] border border-gray-100 dark:border-slate-800 transition-all duration-300 ${isSuccess ? 'scale-[0.98] opacity-90' : 'scale-100'}`}>
+    <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className={`bg-white dark:bg-slate-900 w-full max-w-lg md:rounded-3xl rounded-t-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[92vh] md:h-auto border border-gray-100 dark:border-slate-800 transition-all duration-300 animate-in slide-in-from-bottom md:slide-in-from-bottom-0 md:zoom-in-95 ${isSuccess ? 'scale-[0.98] opacity-90' : 'scale-100'}`}>
         
+        {/* Mobile Handle */}
+        <div className="md:hidden flex justify-center pt-3 pb-1">
+          <div className="w-12 h-1.5 bg-gray-200 dark:bg-slate-800 rounded-full" />
+        </div>
+
         {/* Success Overlay */}
         {isSuccess && (
           <div className="absolute inset-0 z-[70] bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in zoom-in duration-300">
@@ -113,26 +122,25 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
               <CheckCircle size={48} strokeWidth={3} />
             </div>
             <p className="text-xl font-black text-gray-900 dark:text-white tracking-tight">Salvo com Sucesso!</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Sincronizado no Firebase</p>
           </div>
         )}
 
-        <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center shrink-0">
+        <div className="p-5 md:p-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center shrink-0">
           <h2 className="text-xl font-black text-gray-900 dark:text-white tracking-tight">
             {initialData ? 'Editar Registro' : 'Novo Lançamento'}
           </h2>
-          <button onClick={onClose} disabled={isSaving || isSuccess} className="p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors disabled:opacity-50">
+          <button onClick={onClose} disabled={isSaving || isSuccess} className="p-2.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors disabled:opacity-50">
             <X size={24} />
           </button>
         </div>
 
-        <form id="tx-form" onSubmit={handleSave} className="p-6 space-y-5 overflow-y-auto">
-          <div className="grid grid-cols-3 gap-2 p-1 bg-gray-100 dark:bg-slate-800 rounded-2xl shrink-0">
+        <form id="tx-form" onSubmit={handleSave} className="p-5 md:p-6 space-y-6 overflow-y-auto">
+          <div className="grid grid-cols-3 gap-2 p-1.5 bg-gray-100 dark:bg-slate-800 rounded-2xl shrink-0">
             <button
               type="button"
               disabled={isSaving || isSuccess}
               onClick={() => { setType('EXPENSE'); setIsPj(false); }}
-              className={`py-2 rounded-xl text-xs font-bold transition-all ${type === 'EXPENSE' && !isPj ? 'bg-white dark:bg-slate-700 text-rose-600 shadow-sm' : 'text-gray-500'}`}
+              className={`py-3 md:py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${type === 'EXPENSE' && !isPj ? 'bg-white dark:bg-slate-700 text-rose-600 shadow-sm' : 'text-gray-500'}`}
             >
               Saída
             </button>
@@ -140,7 +148,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
               type="button"
               disabled={isSaving || isSuccess}
               onClick={() => { setType('INCOME'); setIsPj(false); }}
-              className={`py-2 rounded-xl text-xs font-bold transition-all ${type === 'INCOME' && !isPj ? 'bg-white dark:bg-slate-700 text-emerald-600 shadow-sm' : 'text-gray-500'}`}
+              className={`py-3 md:py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${type === 'INCOME' && !isPj ? 'bg-white dark:bg-slate-700 text-emerald-600 shadow-sm' : 'text-gray-500'}`}
             >
               Entrada
             </button>
@@ -148,7 +156,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
               type="button"
               disabled={isSaving || isSuccess}
               onClick={() => { setType('INCOME'); setIsPj(true); }}
-              className={`py-2 rounded-xl text-xs font-bold transition-all ${isPj ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500'}`}
+              className={`py-3 md:py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${isPj ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500'}`}
             >
               PJ
             </button>
@@ -156,23 +164,23 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1.5">Data</label>
+              <label className="block text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Data</label>
               <input
                 type="date"
                 required
                 disabled={isSaving || isSuccess}
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 text-base"
               />
             </div>
             <div>
-              <label className="block text-xs font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1.5">Categoria</label>
+              <label className="block text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Categoria</label>
               <select
                 value={category}
                 disabled={isPj || isSaving || isSuccess}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 text-sm disabled:opacity-50"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 text-base disabled:opacity-50 appearance-none"
               >
                 {TRANSACTION_CATEGORIES.map(cat => (
                   <option key={cat} value={cat}>{cat}</option>
@@ -182,9 +190,9 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
           </div>
 
           <div className={`transition-all duration-500 ${isCalculating ? 'opacity-50 blur-[1px]' : 'opacity-100 blur-0'}`}>
-             <label className="block text-xs font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1.5">Valor Total</label>
+             <label className="block text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Valor Total</label>
              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-400">R$</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-gray-400 text-lg">R$</span>
                 <input
                   type="number"
                   step="0.01"
@@ -194,7 +202,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
                   placeholder="0,00"
-                  className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl text-3xl font-black text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full pl-12 pr-4 py-5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl text-4xl font-black text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
                 />
              </div>
           </div>
@@ -203,59 +211,57 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
             <div className="p-5 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800/50 rounded-2xl space-y-4 animate-in slide-in-from-top-2 duration-300">
               <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-400">
                 <Calculator size={18} />
-                <span className="text-sm font-black uppercase tracking-tight">Calculadora PJ</span>
+                <span className="text-xs font-black uppercase tracking-widest">PJ Optimizer</span>
               </div>
-              <div className="grid grid-cols-1 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase mb-1">Faturamento Bruto Mensal</label>
-                  <input
-                    type="number"
-                    min="0"
-                    disabled={isSaving || isCalculating || isSuccess}
-                    value={currentGross}
-                    onChange={(e) => setCurrentGross(e.target.value)}
-                    placeholder="R$ 0,00"
-                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded-xl text-sm dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
+              <div>
+                <label className="block text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase mb-1.5 ml-1">Bruto Mensal</label>
+                <input
+                  type="number"
+                  min="0"
+                  disabled={isSaving || isCalculating || isSuccess}
+                  value={currentGross}
+                  onChange={(e) => setCurrentGross(e.target.value)}
+                  placeholder="R$ 0,00"
+                  className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded-xl text-base dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                />
               </div>
               <button
                 type="button"
                 onClick={calculatePjNet}
                 disabled={isSaving || isCalculating || isSuccess || !currentGross}
-                className="w-full py-3 bg-indigo-600 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95"
+                className="w-full py-4 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.97]"
               >
                 {isCalculating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calculator size={14} />}
-                {isCalculating ? 'Calculando...' : 'Calcular Líquido'}
+                {isCalculating ? 'Calculando...' : 'Aplicar Regra de Tributação'}
               </button>
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1.5">Observação</label>
+            <label className="block text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Observação / Nota</label>
             <textarea
               disabled={isSaving || isSuccess}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Ex: Almoço PJ, Freelance..."
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 min-h-[80px] text-sm"
+              placeholder="Ex: Freelance para empresa X..."
+              className="w-full px-4 py-4 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 min-h-[100px] text-base"
             />
           </div>
         </form>
 
-        <div className="p-6 border-t border-gray-100 dark:border-slate-800 shrink-0">
+        <div className="p-5 md:p-6 border-t border-gray-100 dark:border-slate-800 shrink-0 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
           <button
             type="submit"
             form="tx-form"
             disabled={isSaving || isCalculating || isSuccess}
-            className={`w-full py-4 font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-95 ${
+            className={`w-full py-5 font-black uppercase text-xs tracking-[0.2em] rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-[0.97] ${
               isSuccess 
               ? 'bg-emerald-600 text-white' 
               : 'bg-indigo-600 text-white hover:bg-indigo-700'
             } disabled:opacity-70`}
           >
-            {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : isSuccess ? <Check size={20} strokeWidth={3} /> : <Check size={20} />}
-            {isSaving ? 'Sincronizando...' : isSuccess ? 'Confirmado!' : (initialData ? 'Atualizar Dados' : 'Confirmar Lançamento')}
+            {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : isSuccess ? <Check size={20} strokeWidth={4} /> : <Check size={20} strokeWidth={3} />}
+            {isSaving ? 'Sincronizando...' : isSuccess ? 'Sucesso!' : (initialData ? 'Atualizar Registro' : 'Lançar no Fluxo')}
           </button>
         </div>
       </div>

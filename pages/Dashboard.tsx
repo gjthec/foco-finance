@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, ArrowUpCircle, ArrowDownCircle, Landmark, Calendar, Edit2, Trash2, FileText, Users, ExternalLink, Loader2 } from 'lucide-react';
+import { Plus, Search, ArrowUpCircle, ArrowDownCircle, Landmark, Calendar, Edit2, Trash2, FileText, ExternalLink, Loader2, Filter } from 'lucide-react';
 import { Transaction, TransactionType, Ledger } from '../types';
 import { storage } from '../storage';
 import { TRANSACTION_CATEGORIES } from '../constants';
@@ -19,9 +19,9 @@ const Dashboard: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<TransactionType | 'ALL'>('ALL');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const [showFilters, setShowFilters] = useState(false);
 
   const loadData = async () => {
-    // Não setamos loading aqui se já tivermos dados, para evitar piscadas na tela durante o sync de fundo
     if (transactions.length === 0) setIsLoading(true);
     try {
       const [txs, ldgs] = await Promise.all([
@@ -43,7 +43,6 @@ const Dashboard: React.FC = () => {
 
   const saveTx = async (newTx: Transaction) => {
     try {
-      // Otimista: Atualiza localmente primeiro
       setTransactions(prev => {
         const index = prev.findIndex(t => t.id === newTx.id);
         if (index > -1) {
@@ -53,24 +52,18 @@ const Dashboard: React.FC = () => {
         }
         return [newTx, ...prev];
       });
-
-      // Salva no Firebase
       await storage.saveTransaction(newTx);
-      
-      // Sincroniza o estado completo em background
       loadData();
     } catch (e) {
-      alert("Erro ao salvar transação no servidor. Tente novamente.");
+      alert("Erro ao salvar transação no servidor.");
       throw e;
     }
   };
 
   const deleteTx = async (id: string) => {
     if (confirm('Deseja excluir este lançamento?')) {
-      // Update otimista
       const oldTransactions = [...transactions];
       setTransactions(prev => prev.filter(tx => tx.id !== id));
-      
       try {
         await storage.deleteTransaction(id);
       } catch (e) {
@@ -128,172 +121,156 @@ const Dashboard: React.FC = () => {
   const formatBRL = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Fluxo Mensal</h1>
-          <p className="text-gray-500 dark:text-gray-400">Dados salvos na nuvem Firebase</p>
+    <div className="space-y-6 pb-20 md:pb-0">
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight leading-none mb-1">Fluxo</h1>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-[0.2em]">Gestão em Tempo Real</p>
+          </div>
+          {isLoading && <Loader2 className="animate-spin text-indigo-600 w-5 h-5" />}
         </div>
         
-        <div className="flex items-center gap-3">
-          {isLoading && <Loader2 className="animate-spin text-indigo-600 w-5 h-5" />}
-          <div className="relative">
-            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+          <div className="relative shrink-0">
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="month"
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white font-medium"
+              className="pl-9 pr-3 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-black dark:text-white"
             />
           </div>
           <button
-            onClick={() => { setEditingTx(undefined); setIsModalOpen(true); }}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all font-semibold shadow-md active:scale-95"
+            onClick={() => setShowFilters(!showFilters)}
+            className={`p-2.5 rounded-xl border transition-all shrink-0 active:scale-90 ${showFilters ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 text-gray-500'}`}
           >
-            <Plus size={20} />
-            Lançamento
+            <Filter size={20} />
+          </button>
+          <button
+            onClick={() => { setEditingTx(undefined); setIsModalOpen(true); }}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-100 dark:shadow-none active:scale-[0.98] whitespace-nowrap"
+          >
+            <Plus size={18} strokeWidth={3} />
+            Lançar
           </button>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm flex items-center gap-4 overflow-hidden hover:shadow-md transition-shadow">
-          <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-xl shrink-0">
-            <ArrowUpCircle size={28} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-gray-500 dark:text-gray-400 font-medium truncate">Entradas + A receber</p>
-            <p className="text-lg md:text-xl font-black text-emerald-600 dark:text-emerald-400 truncate tracking-tight">{formatBRL(stats.income)}</p>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm flex items-center gap-4 overflow-hidden hover:shadow-md transition-shadow">
-          <div className="p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 rounded-xl shrink-0">
-            <ArrowDownCircle size={28} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-gray-500 dark:text-gray-400 font-medium truncate">Saídas + A pagar</p>
-            <p className="text-lg md:text-xl font-black text-rose-600 dark:text-rose-400 truncate tracking-tight">{formatBRL(stats.expense)}</p>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm flex items-center gap-4 overflow-hidden hover:shadow-md transition-shadow">
-          <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl shrink-0">
-            <Landmark size={28} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-gray-500 dark:text-gray-400 font-medium truncate">Saldo Líquido</p>
-            <p className={`text-lg md:text-xl font-black truncate tracking-tight ${stats.balance >= 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-rose-600 dark:text-rose-400'}`}>{formatBRL(stats.balance)}</p>
-          </div>
-        </div>
-      </div>
-
-      {isLoading && transactions.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm animate-pulse">
-           <Loader2 className="w-10 h-10 text-indigo-600 animate-spin mb-4" />
-           <p className="text-gray-500 font-medium">Carregando seus dados...</p>
-        </div>
-      ) : (
-        <>
-          <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+        {showFilters && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-5 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl animate-in slide-in-from-top-4 duration-300">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
               <input
                 type="text"
-                placeholder="Pesquisar por nota ou categoria..."
+                placeholder="Pesquisar..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white"
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-base"
               />
             </div>
-            <div className="flex gap-2">
-               <select
+            <div className="grid grid-cols-2 gap-2">
+              <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value as any)}
-                className="px-4 py-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white text-sm font-semibold"
+                className="w-full px-3 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl outline-none text-[10px] font-black uppercase tracking-widest appearance-none"
               >
-                <option value="ALL">Todos os Tipos</option>
+                <option value="ALL">Tipos</option>
                 <option value="INCOME">Entradas</option>
                 <option value="EXPENSE">Saídas</option>
               </select>
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="px-4 py-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-white text-sm font-semibold"
+                className="w-full px-3 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl outline-none text-[10px] font-black uppercase tracking-widest appearance-none"
               >
-                <option value="ALL">Todas Categorias</option>
-                <option value="Dívida Compartilhada">Dívidas Compartilhadas</option>
+                <option value="ALL">Categorias</option>
                 {TRANSACTION_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
               </select>
             </div>
           </div>
+        )}
+      </div>
 
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm overflow-hidden animate-in fade-in duration-500">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="bg-gray-50 dark:bg-slate-800/50 border-b border-gray-200 dark:border-slate-800">
-                  <tr>
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Data</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Descrição</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tipo</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Valor</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-slate-800">
-                  {filteredTransactions.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
-                        <FileText className="w-12 h-12 text-gray-200 dark:text-slate-800 mx-auto mb-3" />
-                        <p>Nenhum lançamento encontrado.</p>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredTransactions.map(tx => {
-                      const isLedger = 'isLedgerSummary' in tx;
-                      return (
-                        <tr key={tx.id} className={`hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors ${isLedger ? 'bg-indigo-50/30 dark:bg-indigo-900/10' : ''}`}>
-                          <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
-                            {isLedger ? <span className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-bold uppercase text-[10px] tracking-tight">Aberto</span> : new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR')}
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex flex-col">
-                              <span className={`text-sm font-semibold ${isLedger ? 'text-indigo-700 dark:text-indigo-400' : 'text-gray-900 dark:text-white'}`}>{tx.note || tx.category}</span>
-                              <span className="text-xs text-gray-400 dark:text-gray-500">{tx.category}</span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${tx.type === 'INCOME' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400' : 'bg-rose-100 dark:bg-rose-900/30 text-rose-800 dark:text-rose-400'}`}>
-                              {tx.type === 'INCOME' ? (isLedger ? 'A Receber' : 'Entrada') : (isLedger ? 'A Pagar' : 'Saída')}
-                            </span>
-                          </td>
-                          <td className={`px-6 py-4 text-sm font-bold text-right ${tx.type === 'INCOME' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                            {tx.type === 'INCOME' ? '+ ' : '- '}{formatBRL(tx.value)}
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <div className="flex justify-end gap-2">
-                              {isLedger ? (
-                                <button onClick={() => navigate(`/ledger/${(tx as any).ledgerId}`)} className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-900 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-lg hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
-                                  Ver Dívida <ExternalLink size={12} />
-                                </button>
-                              ) : (
-                                <>
-                                  <button onClick={() => { setEditingTx(tx); setIsModalOpen(true); }} className="p-1.5 text-gray-400 hover:text-indigo-600 rounded-lg transition-colors"><Edit2 size={16} /></button>
-                                  <button onClick={() => deleteTx(tx.id)} className="p-1.5 text-gray-400 hover:text-rose-600 rounded-lg transition-colors"><Trash2 size={16} /></button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[
+          { label: 'Entradas', value: stats.income, icon: ArrowUpCircle, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+          { label: 'Saídas', value: stats.expense, icon: ArrowDownCircle, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-900/20' },
+          { label: 'Líquido', value: stats.balance, icon: Landmark, color: stats.balance >= 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-rose-600 dark:text-rose-400', bg: 'bg-indigo-50 dark:bg-indigo-900/20' }
+        ].map((stat, i) => (
+          <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-[24px] border border-gray-100 dark:border-slate-800 shadow-sm flex items-center gap-4 transition-transform hover:scale-[1.02]">
+            <div className={`p-3.5 ${stat.bg} ${stat.color} rounded-2xl shrink-0`}>
+              <stat.icon size={26} strokeWidth={2.5} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-0.5">{stat.label}</p>
+              <p className={`text-xl font-black truncate leading-none ${stat.color}`}>{formatBRL(stat.value)}</p>
             </div>
           </div>
-        </>
-      )}
+        ))}
+      </div>
+
+      <div className="space-y-3.5">
+        {filteredTransactions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-[32px] border border-dashed border-gray-200 dark:border-slate-800 text-gray-400">
+            <FileText size={48} className="opacity-10 mb-4" />
+            <p className="text-sm font-bold tracking-tight">Vazio por aqui...</p>
+          </div>
+        ) : (
+          filteredTransactions.map(tx => {
+            const isLedger = 'isLedgerSummary' in tx;
+            return (
+              <div 
+                key={tx.id} 
+                className={`group bg-white dark:bg-slate-900 p-4.5 rounded-[24px] border transition-all flex items-center gap-4 active:scale-[0.98] ${
+                  isLedger ? 'border-indigo-400 dark:border-indigo-600 bg-indigo-50/30 dark:bg-indigo-900/10' : 'border-gray-100 dark:border-slate-800'
+                }`}
+              >
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${
+                  tx.type === 'INCOME' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600' : 'bg-rose-50 dark:bg-rose-900/20 text-rose-600'
+                }`}>
+                  {tx.type === 'INCOME' ? <ArrowUpCircle size={28} strokeWidth={2.5} /> : <ArrowDownCircle size={28} strokeWidth={2.5} />}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start mb-1">
+                    <h4 className="text-sm font-black text-gray-900 dark:text-white truncate pr-2 tracking-tight">
+                      {tx.note || tx.category}
+                    </h4>
+                    <span className={`text-base font-black whitespace-nowrap tracking-tight ${tx.type === 'INCOME' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                      {formatBRL(tx.value)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">
+                    <span className={isLedger ? 'text-indigo-600 dark:text-indigo-400' : ''}>{tx.category}</span>
+                    <span>•</span>
+                    <span>{isLedger ? 'Pendente' : new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 shrink-0">
+                  {isLedger ? (
+                    <button 
+                      onClick={() => navigate(`/ledger/${(tx as any).ledgerId}`)}
+                      className="p-3 text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/30 rounded-2xl active:bg-indigo-600 active:text-white transition-colors"
+                    >
+                      <ExternalLink size={20} />
+                    </button>
+                  ) : (
+                    <>
+                      <button onClick={() => { setEditingTx(tx); setIsModalOpen(true); }} className="p-3 text-gray-400 hover:text-indigo-600 active:bg-gray-100 dark:active:bg-slate-800 rounded-xl transition-colors">
+                        <Edit2 size={20} />
+                      </button>
+                      <button onClick={() => deleteTx(tx.id)} className="p-3 text-gray-400 hover:text-rose-600 active:bg-rose-50 rounded-xl transition-colors">
+                        <Trash2 size={20} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
 
       <TransactionModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingTx(undefined); }} onSave={saveTx} initialData={editingTx} existingTransactions={transactions} />
     </div>
