@@ -7,7 +7,7 @@ import Dashboard from './pages/Dashboard';
 import LedgerList from './pages/LedgerList';
 import LedgerDetail from './pages/LedgerDetail';
 import { storage } from './storage';
-import { auth } from './firebase';
+import { auth, FIREBASE_READY } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 
 const ProtectedRoute = ({ isAuthenticated, children, toggleTheme, theme }: { 
@@ -26,6 +26,7 @@ const App: React.FC = () => {
   const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
+    // 1. Aplicar Tema Inicial
     const initialTheme = storage.getTheme();
     setTheme(initialTheme);
     if (initialTheme === 'dark') {
@@ -34,17 +35,26 @@ const App: React.FC = () => {
       document.documentElement.classList.remove('dark');
     }
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        storage.setAuth(user.email, user.displayName, user.photoURL);
-      } else {
-        storage.setAuth(null);
-      }
+    // 2. Lógica de Autenticação (Firebase ou Local)
+    if (FIREBASE_READY) {
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        if (user) {
+          storage.setAuth(user.email, user.displayName, user.photoURL);
+        } else {
+          // Só limpa se não houver um estado de login local prévio (para permitir persistência offline)
+          const localAuth = storage.getAuth();
+          if (!localAuth.isAuthenticated) storage.setAuth(null);
+        }
+        setAuthState(storage.getAuth());
+        setInitializing(false);
+      });
+      return () => unsubscribe();
+    } else {
+      // Modo Offline/Local: Carrega instantaneamente do LocalStorage
+      console.log("App rodando em modo LOCAL (Sem Firebase)");
       setAuthState(storage.getAuth());
       setInitializing(false);
-    });
-
-    return () => unsubscribe();
+    }
   }, []);
 
   const toggleTheme = () => {
@@ -59,8 +69,9 @@ const App: React.FC = () => {
 
   if (initializing) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950">
-        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-950">
+        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-600 animate-pulse">Iniciando Foco...</p>
       </div>
     );
   }
