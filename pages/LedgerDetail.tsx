@@ -14,7 +14,6 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
   const [isSaving, setIsSaving] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
   
-  // Confirmação de Exclusão
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: string | null }>({ isOpen: false, id: null });
   
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -193,11 +192,11 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <div className="bg-white dark:bg-slate-900 p-4 rounded-[20px] border border-gray-100 dark:border-slate-800 shadow-sm col-span-1">
-          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Eu Paguei</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Eu Paguei ({selectedMonth.split('-')[1]})</p>
           <p className="text-base font-black text-indigo-600 dark:text-indigo-400 truncate">{formatBRL(monthlyStats.mePaid)}</p>
         </div>
         <div className="bg-white dark:bg-slate-900 p-4 rounded-[20px] border border-gray-100 dark:border-slate-800 shadow-sm col-span-1">
-          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-0.5">{ledger.friendName}</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-0.5">{ledger.friendName} ({selectedMonth.split('-')[1]})</p>
           <p className="text-base font-black text-amber-600 dark:text-amber-400 truncate">{formatBRL(monthlyStats.friendPaid)}</p>
         </div>
         <div className={`p-4.5 rounded-[24px] border shadow-lg col-span-2 md:col-span-1 transition-all ${
@@ -205,7 +204,7 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
           totalBalance > 0 ? 'bg-emerald-600 border-emerald-500 text-white' : 
           'bg-rose-600 border-rose-500 text-white'
         }`}>
-          <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${totalBalance === 0 ? 'text-gray-400' : 'text-white/70'}`}>Acerto Final Geral</p>
+          <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${totalBalance === 0 ? 'text-gray-400' : 'text-white/70'}`}>Acerto Total Geral</p>
           <div className="flex items-center justify-between">
             <p className="text-xl font-black truncate leading-none">{formatBRL(Math.abs(totalBalance))}</p>
             <p className={`text-[10px] font-black uppercase tracking-widest ${totalBalance === 0 ? 'text-emerald-500' : 'text-white/90'}`}>
@@ -218,7 +217,7 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
       <div className="space-y-3">
         {monthlyEntries.length === 0 ? (
           <div className="py-16 text-center text-gray-400 dark:text-gray-600 bg-white dark:bg-slate-900 rounded-[32px] border border-dashed border-gray-200 dark:border-slate-800">
-            <p className="text-sm font-bold tracking-tight">Vazio por aqui este mês.</p>
+            <p className="text-sm font-bold tracking-tight">Nenhum gasto registrado em {selectedMonth.split('-')[1]}/{selectedMonth.split('-')[0]}.</p>
           </div>
         ) : (
           monthlyEntries.map((entry) => (
@@ -306,7 +305,7 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
                 </div>
                 <div>
                   <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Data</label>
-                  <input required type="date" name="date" defaultValue={new Date().toISOString().slice(0, 10)} className="w-full px-4 py-4 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-sm font-black outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <input required type="date" name="date" defaultValue={`${selectedMonth}-${new Date().toISOString().slice(8, 10)}`} className="w-full px-4 py-4 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-sm font-black outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
               </div>
               <div>

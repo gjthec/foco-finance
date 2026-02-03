@@ -16,7 +16,6 @@ const Dashboard: React.FC = () => {
   const [editingTx, setEditingTx] = useState<Transaction | undefined>();
   const [isLoading, setIsLoading] = useState(true);
   
-  // Confirmação de Exclusão
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: string | null }>({ isOpen: false, id: null });
   
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -59,7 +58,6 @@ const Dashboard: React.FC = () => {
       await storage.saveTransaction(newTx);
       loadData();
     } catch (e) {
-      // Aqui poderíamos ter um Toast futuramente
       throw e;
     }
   };
@@ -77,25 +75,31 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  // MUDANÇA CRÍTICA: O saldo de dívidas agora filtra por mês no Dashboard (Planejamento)
   const ledgerTransactions = useMemo(() => {
     return ledgers.map(l => {
-      const balance = l.entries.reduce((acc, entry) => {
+      // Filtra entradas do ledger que pertencem ao mês selecionado no dashboard
+      const monthlyEntries = l.entries.filter(e => e.date.startsWith(selectedMonth));
+      
+      const balance = monthlyEntries.reduce((acc, entry) => {
         if (entry.status === 'paid') return acc;
         return entry.paidBy === 'me' ? acc + entry.amount : acc - entry.amount;
       }, 0);
+
       if (balance === 0) return null;
+
       return {
-        id: `ledger-ref-${l.id}`,
-        date: 'Pendente',
+        id: `ledger-ref-${l.id}-${selectedMonth}`,
+        date: 'Fluxo Mensal',
         type: (balance > 0 ? 'INCOME' : 'EXPENSE') as TransactionType,
         value: Math.abs(balance),
         category: 'Dívida Compartilhada',
-        note: `Acerto com ${l.friendName}`,
+        note: `Acerto mensal com ${l.friendName}`,
         isLedgerSummary: true,
         ledgerId: l.id
       };
     }).filter(Boolean) as any[];
-  }, [ledgers]);
+  }, [ledgers, selectedMonth]);
 
   const filteredTransactions = useMemo(() => {
     const realFiltered = transactions.filter(tx => tx.date.startsWith(selectedMonth));
@@ -107,8 +111,8 @@ const Dashboard: React.FC = () => {
       return matchesSearch && matchesType && matchesCategory;
     });
     return combined.sort((a, b) => {
-      if (a.date === 'Pendente') return -1;
-      if (b.date === 'Pendente') return 1;
+      if (a.date === 'Fluxo Mensal') return -1;
+      if (b.date === 'Fluxo Mensal') return 1;
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
   }, [transactions, ledgerTransactions, selectedMonth, searchTerm, typeFilter, categoryFilter]);
@@ -130,7 +134,7 @@ const Dashboard: React.FC = () => {
         <div className="flex items-center justify-between">
           <div className="hidden md:block">
             <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight leading-none mb-1">Fluxo</h1>
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-[0.2em]">Gestão em Tempo Real</p>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 font-black uppercase tracking-[0.2em]">Gestão em Tempo Real</p>
           </div>
           {isLoading && <Loader2 className="animate-spin text-indigo-600 w-5 h-5" />}
         </div>
@@ -217,7 +221,7 @@ const Dashboard: React.FC = () => {
         {filteredTransactions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-[32px] border border-dashed border-gray-200 dark:border-slate-800 text-gray-400">
             <FileText size={48} className="opacity-10 mb-4" />
-            <p className="text-sm font-bold tracking-tight">Vazio por aqui...</p>
+            <p className="text-sm font-bold tracking-tight">Sem lançamentos este mês.</p>
           </div>
         ) : (
           filteredTransactions.map(tx => {
@@ -226,7 +230,7 @@ const Dashboard: React.FC = () => {
               <div 
                 key={tx.id} 
                 className={`group bg-white dark:bg-slate-900 p-4.5 rounded-[24px] border transition-all flex items-center gap-4 active:scale-[0.98] ${
-                  isLedger ? 'border-indigo-400 dark:border-indigo-600 bg-indigo-50/30 dark:bg-indigo-900/10' : 'border-gray-100 dark:border-slate-800'
+                  isLedger ? 'border-indigo-400 dark:border-indigo-600 bg-indigo-50/10 dark:bg-indigo-900/10' : 'border-gray-100 dark:border-slate-800'
                 }`}
               >
                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${
@@ -247,7 +251,7 @@ const Dashboard: React.FC = () => {
                   <div className="flex items-center gap-2 text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">
                     <span className={isLedger ? 'text-indigo-600 dark:text-indigo-400' : ''}>{tx.category}</span>
                     <span>•</span>
-                    <span>{isLedger ? 'Pendente' : new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                    <span>{tx.date === 'Fluxo Mensal' ? `Mês: ${selectedMonth.split('-')[1]}/${selectedMonth.split('-')[0]}` : new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
                   </div>
                 </div>
 
