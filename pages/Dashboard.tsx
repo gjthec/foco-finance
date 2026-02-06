@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, ArrowUpCircle, ArrowDownCircle, Landmark, Calendar, Edit2, Trash2, FileText, ExternalLink, Loader2, Filter } from 'lucide-react';
+import { Plus, Search, ArrowUpCircle, ArrowDownCircle, Landmark, Calendar, Edit2, Trash2, FileText, ExternalLink, Loader2, Filter, CheckCircle } from 'lucide-react';
 import { Transaction, TransactionType, Ledger } from '../types';
 import { storage } from '../storage';
 import { TRANSACTION_CATEGORIES } from '../constants';
@@ -42,7 +42,7 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [selectedMonth]);
 
   const saveTx = async (newTx: Transaction) => {
     try {
@@ -75,28 +75,35 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // MUDANÇA CRÍTICA: O saldo de dívidas agora filtra por mês no Dashboard (Planejamento)
   const ledgerTransactions = useMemo(() => {
     return ledgers.map(l => {
-      // Filtra entradas do ledger que pertencem ao mês selecionado no dashboard
       const monthlyEntries = l.entries.filter(e => e.date.startsWith(selectedMonth));
-      
+      if (monthlyEntries.length === 0) return null;
+
+      // CORREÇÃO: Removida a divisão por 2 para refletir o valor real lançado
       const balance = monthlyEntries.reduce((acc, entry) => {
         if (entry.status === 'paid') return acc;
         return entry.paidBy === 'me' ? acc + entry.amount : acc - entry.amount;
       }, 0);
 
-      if (balance === 0) return null;
+      // Valor total movimentado no mês (independente de estar pago ou não) para o controle de fluxo
+      const volumeTotal = monthlyEntries.reduce((acc, entry) => {
+        return entry.paidBy === 'me' ? acc + entry.amount : acc - entry.amount;
+      }, 0);
+
+      const isFullyPaid = monthlyEntries.length > 0 && monthlyEntries.every(e => e.status === 'paid');
 
       return {
         id: `ledger-ref-${l.id}-${selectedMonth}`,
         date: 'Fluxo Mensal',
-        type: (balance > 0 ? 'INCOME' : 'EXPENSE') as TransactionType,
-        value: Math.abs(balance),
+        type: (volumeTotal >= 0 ? 'INCOME' : 'EXPENSE') as TransactionType,
+        value: Math.abs(volumeTotal),
         category: 'Dívida Compartilhada',
-        note: `Acerto mensal com ${l.friendName}`,
+        note: `Acerto com ${l.friendName}`,
         isLedgerSummary: true,
-        ledgerId: l.id
+        ledgerId: l.id,
+        isPaid: isFullyPaid,
+        currentBalance: balance // Saldo pendente real
       };
     }).filter(Boolean) as any[];
   }, [ledgers, selectedMonth]);
@@ -134,7 +141,7 @@ const Dashboard: React.FC = () => {
         <div className="flex items-center justify-between">
           <div className="hidden md:block">
             <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight leading-none mb-1">Fluxo</h1>
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 font-black uppercase tracking-[0.2em]">Gestão em Tempo Real</p>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 font-black uppercase tracking-[0.2em]">Planejamento Mensal</p>
           </div>
           {isLoading && <Loader2 className="animate-spin text-indigo-600 w-5 h-5" />}
         </div>
@@ -203,7 +210,7 @@ const Dashboard: React.FC = () => {
         {[
           { label: 'Entradas', value: stats.income, icon: ArrowUpCircle, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
           { label: 'Saídas', value: stats.expense, icon: ArrowDownCircle, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-900/20' },
-          { label: 'Líquido', value: stats.balance, icon: Landmark, color: stats.balance >= 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-rose-600 dark:text-rose-400', bg: 'bg-indigo-50 dark:bg-indigo-900/20' }
+          { label: 'Saldo Mensal', value: stats.balance, icon: Landmark, color: stats.balance >= 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-rose-600 dark:text-rose-400', bg: 'bg-indigo-50 dark:bg-indigo-900/20' }
         ].map((stat, i) => (
           <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-[24px] border border-gray-100 dark:border-slate-800 shadow-sm flex items-center gap-4 transition-transform hover:scale-[1.02]">
             <div className={`p-3.5 ${stat.bg} ${stat.color} rounded-2xl shrink-0`}>
@@ -221,37 +228,44 @@ const Dashboard: React.FC = () => {
         {filteredTransactions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-[32px] border border-dashed border-gray-200 dark:border-slate-800 text-gray-400">
             <FileText size={48} className="opacity-10 mb-4" />
-            <p className="text-sm font-bold tracking-tight">Sem lançamentos este mês.</p>
+            <p className="text-sm font-bold tracking-tight">Sem lançamentos para este período.</p>
           </div>
         ) : (
           filteredTransactions.map(tx => {
             const isLedger = 'isLedgerSummary' in tx;
+            const isPaid = tx.isPaid;
+            
             return (
               <div 
                 key={tx.id} 
                 className={`group bg-white dark:bg-slate-900 p-4.5 rounded-[24px] border transition-all flex items-center gap-4 active:scale-[0.98] ${
-                  isLedger ? 'border-indigo-400 dark:border-indigo-600 bg-indigo-50/10 dark:bg-indigo-900/10' : 'border-gray-100 dark:border-slate-800'
+                  isPaid ? 'opacity-40 grayscale border-gray-50 dark:border-slate-800' :
+                  isLedger ? 'border-indigo-400 dark:border-indigo-600 bg-indigo-50/10 dark:bg-indigo-900/10' : 'border-gray-100 dark:border-slate-800 shadow-sm'
                 }`}
               >
                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${
+                  isPaid ? 'bg-emerald-50 dark:bg-emerald-900/10 text-emerald-500' :
                   tx.type === 'INCOME' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600' : 'bg-rose-50 dark:bg-rose-900/20 text-rose-600'
                 }`}>
-                  {tx.type === 'INCOME' ? <ArrowUpCircle size={28} strokeWidth={2.5} /> : <ArrowDownCircle size={28} strokeWidth={2.5} />}
+                  {isPaid ? <CheckCircle size={28} strokeWidth={2.5} /> : (tx.type === 'INCOME' ? <ArrowUpCircle size={28} strokeWidth={2.5} /> : <ArrowDownCircle size={28} strokeWidth={2.5} />)}
                 </div>
 
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start mb-1">
-                    <h4 className="text-sm font-black text-gray-900 dark:text-white truncate pr-2 tracking-tight">
+                    <h4 className={`text-sm font-black truncate pr-2 tracking-tight ${isPaid ? 'line-through text-gray-400' : 'text-gray-900 dark:text-white'}`}>
                       {tx.note || tx.category}
                     </h4>
-                    <span className={`text-base font-black whitespace-nowrap tracking-tight ${tx.type === 'INCOME' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                    <span className={`text-base font-black whitespace-nowrap tracking-tight ${
+                      isPaid ? 'text-gray-400' : 
+                      tx.type === 'INCOME' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                    }`}>
                       {formatBRL(tx.value)}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">
-                    <span className={isLedger ? 'text-indigo-600 dark:text-indigo-400' : ''}>{tx.category}</span>
+                    <span className={isLedger ? (isPaid ? 'text-gray-400' : 'text-indigo-600 dark:text-indigo-400') : ''}>{tx.category}</span>
                     <span>•</span>
-                    <span>{tx.date === 'Fluxo Mensal' ? `Mês: ${selectedMonth.split('-')[1]}/${selectedMonth.split('-')[0]}` : new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                    <span>{isPaid ? 'LIQUIDADO' : (tx.date === 'Fluxo Mensal' ? `PENDENTE` : new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR'))}</span>
                   </div>
                 </div>
 
@@ -259,7 +273,9 @@ const Dashboard: React.FC = () => {
                   {isLedger ? (
                     <button 
                       onClick={() => navigate(`/ledger/${(tx as any).ledgerId}`)}
-                      className="p-3 text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/30 rounded-2xl active:bg-indigo-600 active:text-white transition-colors"
+                      className={`p-3 rounded-2xl transition-colors ${
+                        isPaid ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' : 'text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/30'
+                      } hover:bg-indigo-600 hover:text-white`}
                     >
                       <ExternalLink size={20} />
                     </button>
