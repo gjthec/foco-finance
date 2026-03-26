@@ -11,14 +11,27 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
   const navigate = useNavigate();
   const [ledger, setLedger] = useState<Ledger | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showBatchModal, setShowBatchModal] = useState(false);
   const [editingEntry, setEditingEntry] = useState<LedgerEntry | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
+  const [batchSuccessFeedback, setBatchSuccessFeedback] = useState(false);
+  const [batchError, setBatchError] = useState('');
   
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: string | null }>({ isOpen: false, id: null });
   const [confirmPayAll, setConfirmPayAll] = useState(false);
   
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [batchDescription, setBatchDescription] = useState('');
+  const [batchAmount, setBatchAmount] = useState('');
+  const [batchPaidBy, setBatchPaidBy] = useState<'me' | 'friend'>('me');
+  const [batchStartMonth, setBatchStartMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [batchMonthCount, setBatchMonthCount] = useState(3);
+  const [batchSelectionMode, setBatchSelectionMode] = useState<'auto' | 'manual'>('auto');
+  const [batchGenerationMode, setBatchGenerationMode] = useState<'fixed' | 'installment' | 'manual'>('fixed');
+  const [batchDueDay, setBatchDueDay] = useState('');
+  const [batchManualValues, setBatchManualValues] = useState<Record<string, string>>({});
+  const [batchSelectedMonths, setBatchSelectedMonths] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -34,10 +47,26 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
   }, [id, slug, isPublic]);
 
   useEffect(() => {
-    if (showAddModal) document.body.style.overflow = 'hidden';
+    if (showAddModal || showBatchModal) document.body.style.overflow = 'hidden';
     else document.body.style.overflow = 'unset';
     return () => { document.body.style.overflow = 'unset'; };
-  }, [showAddModal]);
+  }, [showAddModal, showBatchModal]);
+
+  useEffect(() => {
+    setBatchStartMonth(selectedMonth);
+  }, [selectedMonth]);
+
+  useEffect(() => {
+    if (!showBatchModal) return;
+    if (batchSelectionMode !== 'auto') return;
+    const [startYear, startMonthNumber] = batchStartMonth.split('-').map(Number);
+    if (!startYear || !startMonthNumber) return;
+    const months = Array.from({ length: Math.max(1, batchMonthCount) }, (_, index) => {
+      const date = new Date(startYear, startMonthNumber - 1 + index, 1);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    });
+    setBatchSelectedMonths(months);
+  }, [batchStartMonth, batchMonthCount, batchSelectionMode, showBatchModal]);
 
   const monthlyEntries = useMemo(() => {
     if (!ledger) return [];
@@ -158,6 +187,115 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
   };
 
   const formatBRL = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+  const formatMonthLabel = (monthValue: string) => {
+    return new Date(`${monthValue}-01T12:00:00`).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
+  };
+  const monthGrid = useMemo(() => {
+    const [startYear, startMonthNumber] = batchStartMonth.split('-').map(Number);
+    if (!startYear || !startMonthNumber) return [];
+    return Array.from({ length: 18 }, (_, index) => {
+      const date = new Date(startYear, startMonthNumber - 1 + index, 1);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    });
+  }, [batchStartMonth]);
+  const sortedBatchMonths = useMemo(() => {
+    return [...batchSelectedMonths].sort((a, b) => a.localeCompare(b));
+  }, [batchSelectedMonths]);
+  const parsedBatchAmount = parseFloat(batchAmount) || 0;
+  const batchPreviewRows = useMemo(() => {
+    if (sortedBatchMonths.length === 0) return [];
+    if (batchGenerationMode === 'installment') {
+      const totalCents = Math.round(parsedBatchAmount * 100);
+      const baseInstallment = Math.floor(totalCents / sortedBatchMonths.length);
+      const remaining = totalCents - (baseInstallment * sortedBatchMonths.length);
+      return sortedBatchMonths.map((month, index) => {
+        const cents = index === sortedBatchMonths.length - 1 ? baseInstallment + remaining : baseInstallment;
+        return { month, value: cents / 100 };
+      });
+    }
+    return sortedBatchMonths.map((month) => {
+      const manualValue = parseFloat(batchManualValues[month] || '');
+      return {
+        month,
+        value: batchGenerationMode === 'manual' && !Number.isNaN(manualValue) ? manualValue : parsedBatchAmount
+      };
+    });
+  }, [sortedBatchMonths, batchGenerationMode, parsedBatchAmount, batchManualValues]);
+  const batchPreviewTotal = useMemo(() => batchPreviewRows.reduce((acc, item) => acc + item.value, 0), [batchPreviewRows]);
+
+  useEffect(() => {
+    if (!showBatchModal) return;
+    if (batchGenerationMode !== 'manual') return;
+    setBatchManualValues((previous) => {
+      const next: Record<string, string> = {};
+      sortedBatchMonths.forEach((month) => {
+        next[month] = previous[month] ?? String(parsedBatchAmount || 0);
+      });
+      return next;
+    });
+  }, [batchGenerationMode, sortedBatchMonths, parsedBatchAmount, showBatchModal]);
+
+  const resetBatchModal = () => {
+    setBatchDescription('');
+    setBatchAmount('');
+    setBatchPaidBy('me');
+    setBatchStartMonth(selectedMonth);
+    setBatchMonthCount(3);
+    setBatchSelectionMode('auto');
+    setBatchGenerationMode('fixed');
+    setBatchDueDay('');
+    setBatchManualValues({});
+    setBatchSelectedMonths([]);
+    setBatchError('');
+  };
+
+  const applyQuickMonthSelection = (monthsAhead: number) => {
+    setBatchSelectionMode('auto');
+    setBatchMonthCount(monthsAhead);
+  };
+
+  const toggleBatchMonth = (monthValue: string) => {
+    setBatchSelectionMode('manual');
+    setBatchSelectedMonths((previous) => {
+      if (previous.includes(monthValue)) return previous.filter((month) => month !== monthValue);
+      return [...previous, monthValue];
+    });
+  };
+
+  const resolveEntryDate = (monthValue: string) => {
+    const due = parseInt(batchDueDay, 10);
+    const [year, month] = monthValue.split('-').map(Number);
+    if (!year || !month) return `${monthValue}-01`;
+    const maxDay = new Date(year, month, 0).getDate();
+    const safeDay = Number.isNaN(due) || due < 1 ? 1 : Math.min(due, maxDay);
+    return `${monthValue}-${String(safeDay).padStart(2, '0')}`;
+  };
+
+  const submitBatchEntries = async () => {
+    if (!ledger || parsedBatchAmount < 0 || batchPreviewRows.length === 0 || !batchDescription.trim()) {
+      setBatchError('Preencha os dados obrigatórios e selecione ao menos um mês.');
+      return;
+    }
+    if (batchGenerationMode === 'manual' && batchPreviewRows.some((row) => row.value < 0 || Number.isNaN(row.value))) {
+      setBatchError('Revise os valores manuais antes de confirmar.');
+      return;
+    }
+    setBatchError('');
+    const newEntries: LedgerEntry[] = batchPreviewRows.map((row) => ({
+      id: Math.random().toString(36).substr(2, 9),
+      date: resolveEntryDate(row.month),
+      amount: row.value,
+      paidBy: batchPaidBy,
+      owesTo: batchPaidBy === 'me' ? 'friend' : 'me',
+      description: batchDescription.trim(),
+      status: 'open'
+    }));
+    await updateLedger({ ...ledger, entries: [...newEntries, ...ledger.entries] });
+    setShowBatchModal(false);
+    setBatchSuccessFeedback(true);
+    resetBatchModal();
+    setTimeout(() => setBatchSuccessFeedback(false), 2500);
+  };
 
   if (!ledger) return <div className="p-8 text-center text-gray-500 dark:text-gray-400 font-bold">Registro não encontrado.</div>;
 
@@ -235,10 +373,22 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
               >
                 <Plus size={16} strokeWidth={3} /> Lançar
               </button>
+              <button
+                onClick={() => { setShowBatchModal(true); setBatchStartMonth(selectedMonth); }}
+                disabled={isSaving}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-slate-700 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-sm active:scale-[0.98] disabled:opacity-50"
+              >
+                <Calendar size={16} strokeWidth={3} /> Lançar vários meses
+              </button>
             </div>
           )}
         </div>
       </div>
+      {batchSuccessFeedback && (
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 p-3 rounded-xl text-xs font-black tracking-wide uppercase">
+          Lançamentos em lote criados com sucesso.
+        </div>
+      )}
 
       {/* STATS CARDS - IMPROVED DESIGN */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -415,6 +565,142 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
               >
                 {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Check size={20} strokeWidth={3} />}
                 {isSaving ? 'Gravando...' : (editingEntry ? 'Salvar Edição' : 'Confirmar Gasto')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBatchModal && (
+        <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center p-0 md:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-2xl md:rounded-[32px] rounded-t-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[92vh] border border-gray-100 dark:border-slate-800 animate-in slide-in-from-bottom md:slide-in-from-bottom-0 md:zoom-in-95">
+            <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center shrink-0">
+              <h2 className="text-xl font-black dark:text-white tracking-tight">Lançar vários meses</h2>
+              <button onClick={() => { setShowBatchModal(false); resetBatchModal(); }} className="p-2.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors"><X size={24} /></button>
+            </div>
+            <div className="p-6 space-y-6 overflow-y-auto">
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Descrição</label>
+                  <input value={batchDescription} onChange={(e) => setBatchDescription(e.target.value)} placeholder="Ex: Dívida com pai" className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-base outline-none focus:ring-2 focus:ring-indigo-500 font-bold" />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">{batchGenerationMode === 'installment' ? 'Valor total (R$)' : 'Valor por mês (R$)'}</label>
+                  <input type="number" min="0" step="0.01" value={batchAmount} onChange={(e) => setBatchAmount(e.target.value)} className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-base outline-none focus:ring-2 focus:ring-indigo-500 font-bold" />
+                </div>
+              </div>
+              <div className="grid md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Mês inicial</label>
+                  <input type="month" value={batchStartMonth} onChange={(e) => setBatchStartMonth(e.target.value)} className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold" />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Quantidade</label>
+                  <input type="number" min="1" value={batchMonthCount} onChange={(e) => setBatchMonthCount(Math.max(1, Number(e.target.value) || 1))} className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold" />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Vencimento (dia)</label>
+                  <input type="number" min="1" max="31" value={batchDueDay} onChange={(e) => setBatchDueDay(e.target.value)} placeholder="1" className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold" />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Pagador</label>
+                  <select value={batchPaidBy} onChange={(e) => setBatchPaidBy(e.target.value as 'me' | 'friend')} className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold">
+                    <option value="me">Eu paguei</option>
+                    <option value="friend">{ledger.friendName.split(' ')[0]} pagou</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Modo de geração</p>
+                <div className="grid md:grid-cols-3 gap-2">
+                  {[
+                    { value: 'fixed', label: 'Recorrente fixa' },
+                    { value: 'installment', label: 'Parcelada' },
+                    { value: 'manual', label: 'Manual' }
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setBatchGenerationMode(option.value as 'fixed' | 'installment' | 'manual')}
+                      className={`p-3 rounded-2xl border text-xs font-black uppercase tracking-wider ${batchGenerationMode === option.value ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 dark:bg-slate-800 border-gray-100 dark:border-slate-700 text-gray-500 dark:text-slate-300'}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Seleção de meses</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => applyQuickMonthSelection(3)} className="px-2 py-1 text-[10px] font-black uppercase tracking-widest border border-gray-200 dark:border-slate-700 rounded-lg">Próximos 3</button>
+                    <button type="button" onClick={() => applyQuickMonthSelection(6)} className="px-2 py-1 text-[10px] font-black uppercase tracking-widest border border-gray-200 dark:border-slate-700 rounded-lg">Próximos 6</button>
+                    <button type="button" onClick={() => applyQuickMonthSelection(12)} className="px-2 py-1 text-[10px] font-black uppercase tracking-widest border border-gray-200 dark:border-slate-700 rounded-lg">Próximos 12</button>
+                    <button type="button" onClick={() => { setBatchSelectionMode('manual'); setBatchSelectedMonths([]); }} className="px-2 py-1 text-[10px] font-black uppercase tracking-widest border border-gray-200 dark:border-slate-700 rounded-lg">Limpar</button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {monthGrid.map((monthValue) => {
+                    const isSelected = batchSelectedMonths.includes(monthValue);
+                    return (
+                      <button
+                        type="button"
+                        key={monthValue}
+                        onClick={() => toggleBatchMonth(monthValue)}
+                        className={`p-2.5 rounded-xl border text-xs font-black uppercase tracking-wider transition-all ${isSelected ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-slate-900 text-gray-500 dark:text-slate-300 border-gray-200 dark:border-slate-700'}`}
+                      >
+                        {formatMonthLabel(monthValue)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Preview</p>
+                <div className="rounded-2xl border border-gray-100 dark:border-slate-700 overflow-hidden">
+                  <div className="max-h-52 overflow-y-auto">
+                    {batchPreviewRows.length === 0 ? (
+                      <p className="p-4 text-sm text-gray-400 dark:text-slate-500 font-bold">Selecione os meses para visualizar o preview.</p>
+                    ) : (
+                      batchPreviewRows.map((row) => (
+                        <div key={row.month} className="p-3 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between gap-3">
+                          <span className="text-xs font-black uppercase tracking-wider text-gray-500 dark:text-slate-300">{formatMonthLabel(row.month)}</span>
+                          {batchGenerationMode === 'manual' ? (
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={batchManualValues[row.month] ?? row.value}
+                              onChange={(e) => setBatchManualValues((prev) => ({ ...prev, [row.month]: e.target.value }))}
+                              className="w-36 px-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-black text-right outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                          ) : (
+                            <span className="text-sm font-black text-gray-900 dark:text-white">{formatBRL(row.value)}</span>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="p-3 bg-gray-50/70 dark:bg-slate-800/50 flex items-center justify-between text-xs font-black uppercase tracking-wider">
+                    <span>{batchPreviewRows.length} lançamentos serão criados</span>
+                    <span>Total {formatBRL(batchPreviewTotal)}</span>
+                  </div>
+                </div>
+                {batchError && <p className="text-xs text-rose-600 dark:text-rose-400 font-bold">{batchError}</p>}
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-100 dark:border-slate-800 shrink-0 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={submitBatchEntries}
+                className="w-full py-4 bg-indigo-600 text-white font-black uppercase text-xs tracking-[0.2em] rounded-[20px] shadow-xl hover:bg-indigo-700 transition-all active:scale-[0.97] flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Check size={20} strokeWidth={3} />}
+                {isSaving ? 'Gravando...' : 'Confirmar lançamentos'}
               </button>
             </div>
           </div>
