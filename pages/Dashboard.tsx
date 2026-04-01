@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, ArrowUpCircle, ArrowDownCircle, Landmark, Calendar, Edit2, Trash2, FileText, ExternalLink, Loader2, Filter, CheckCircle } from 'lucide-react';
-import { Subscription, SubscriptionMonthStatus, Transaction, TransactionType, Ledger } from '../types';
+import { Subscription, Transaction, TransactionType, Ledger } from '../types';
 import { storage } from '../storage';
 import { TRANSACTION_CATEGORIES } from '../constants';
 import TransactionModal from '../components/TransactionModal';
@@ -12,11 +12,9 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [subscriptionStatuses, setSubscriptionStatuses] = useState<SubscriptionMonthStatus[]>([]);
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | undefined>();
-  const [editingSubscription, setEditingSubscription] = useState<Subscription | undefined>();
   const [isLoading, setIsLoading] = useState(true);
   
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: string | null }>({ isOpen: false, id: null });
@@ -30,16 +28,14 @@ const Dashboard: React.FC = () => {
   const loadData = async () => {
     if (transactions.length === 0) setIsLoading(true);
     try {
-      const [txs, ldgs, subs, statuses] = await Promise.all([
+      const [txs, ldgs, subs] = await Promise.all([
         storage.getTransactions(),
         storage.getLedgers(),
-        storage.getSubscriptions(),
-        storage.getSubscriptionMonthStatuses()
+        storage.getSubscriptions()
       ]);
       setTransactions(txs);
       setLedgers(ldgs);
       setSubscriptions(subs);
-      setSubscriptionStatuses(statuses);
     } catch (e) {
       console.error("Erro ao carregar dados", e);
     } finally {
@@ -69,20 +65,6 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const saveSubscription = async (subscription: Subscription) => {
-    await storage.saveSubscription(subscription);
-    setSubscriptions(prev => {
-      const idx = prev.findIndex(s => s.id === subscription.id);
-      if (idx > -1) {
-        const updated = [...prev];
-        updated[idx] = subscription;
-        return updated;
-      }
-      return [subscription, ...prev];
-    });
-    loadData();
-  };
-
   const getMonthDate = (month: string) => {
     const [y, m] = month.split('-').map(Number);
     return new Date(y, m - 1, 1);
@@ -100,40 +82,18 @@ const Dashboard: React.FC = () => {
       const daysInMonth = new Date(targetMonthDate.getFullYear(), targetMonthDate.getMonth() + 1, 0).getDate();
       const day = Math.min(subscription.dueDay, daysInMonth);
       const competenceDate = `${selectedMonth}-${String(day).padStart(2, '0')}`;
-      const statusRecord = subscriptionStatuses.find(s => s.subscriptionId === subscription.id && s.competence === selectedMonth);
-      const isPaid = statusRecord?.status === 'paid';
-      const effectiveTitle = statusRecord?.titleSnapshot || subscription.title;
-      const effectiveAmount = statusRecord?.amountSnapshot ?? subscription.amount;
-
       return [{
         id: `sub-${subscription.id}-${selectedMonth}`,
         date: competenceDate,
         type: subscription.type,
-        value: effectiveAmount,
+        value: subscription.amount,
         category: subscription.category || 'Assinatura',
-        note: effectiveTitle,
+        note: subscription.title,
         isRecurring: true,
-        subscriptionId: subscription.id,
-        isPaid,
-        status: statusRecord?.status || 'pending'
+        subscriptionId: subscription.id
       }];
     });
-  }, [subscriptions, selectedMonth, subscriptionStatuses]);
-
-  const toggleRecurringPaid = async (item: any) => {
-    const newStatus: SubscriptionMonthStatus = {
-      id: `${item.subscriptionId}-${selectedMonth}`,
-      subscriptionId: item.subscriptionId,
-      competence: selectedMonth,
-      status: item.isPaid ? 'pending' : 'paid',
-      paidAt: item.isPaid ? undefined : Date.now(),
-      amountSnapshot: item.value,
-      titleSnapshot: item.note,
-      updatedAt: Date.now()
-    };
-    await storage.saveSubscriptionMonthStatus(newStatus);
-    loadData();
-  };
+  }, [subscriptions, selectedMonth]);
 
   const executeDelete = async () => {
     const id = confirmDelete.id;
@@ -361,35 +321,16 @@ const Dashboard: React.FC = () => {
                     </button>
                   ) : (
                     <>
-                      {isRecurring && (
-                        <button onClick={() => toggleRecurringPaid(tx)} className={`p-3 rounded-xl transition-colors ${isPaid ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' : 'text-gray-400 hover:text-emerald-600 active:bg-emerald-50'}`}>
-                          <CheckCircle size={20} />
-                        </button>
+                      {!isRecurring && (
+                        <>
+                          <button onClick={() => { setEditingTx(tx); setIsModalOpen(true); }} className="p-3 text-gray-400 hover:text-indigo-600 active:bg-gray-100 dark:active:bg-slate-800 rounded-xl transition-colors">
+                            <Edit2 size={20} />
+                          </button>
+                          <button onClick={() => setConfirmDelete({ isOpen: true, id: tx.id })} className="p-3 text-gray-400 hover:text-rose-600 active:bg-rose-50 rounded-xl transition-colors">
+                            <Trash2 size={20} />
+                          </button>
+                        </>
                       )}
-                      <button onClick={() => {
-                        if (isRecurring) {
-                          const sub = subscriptions.find(s => s.id === (tx as any).subscriptionId);
-                          setEditingSubscription(sub);
-                          setEditingTx(undefined);
-                        } else {
-                          setEditingTx(tx);
-                          setEditingSubscription(undefined);
-                        }
-                        setIsModalOpen(true);
-                      }} className="p-3 text-gray-400 hover:text-indigo-600 active:bg-gray-100 dark:active:bg-slate-800 rounded-xl transition-colors">
-                        <Edit2 size={20} />
-                      </button>
-                      <button onClick={() => {
-                        if (isRecurring) {
-                          const sub = subscriptions.find(s => s.id === (tx as any).subscriptionId);
-                          if (!sub) return;
-                          saveSubscription({ ...sub, isActive: false, updatedAt: Date.now() });
-                          return;
-                        }
-                        setConfirmDelete({ isOpen: true, id: tx.id });
-                      }} className="p-3 text-gray-400 hover:text-rose-600 active:bg-rose-50 rounded-xl transition-colors">
-                        <Trash2 size={20} />
-                      </button>
                     </>
                   )}
                 </div>
@@ -399,15 +340,7 @@ const Dashboard: React.FC = () => {
         )}
       </div>
 
-      <TransactionModal
-        isOpen={isModalOpen}
-        onClose={() => { setIsModalOpen(false); setEditingTx(undefined); setEditingSubscription(undefined); }}
-        onSave={saveTx}
-        onSaveSubscription={saveSubscription}
-        initialData={editingTx}
-        initialSubscription={editingSubscription}
-        existingTransactions={transactions}
-      />
+      <TransactionModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingTx(undefined); }} onSave={saveTx} initialData={editingTx} existingTransactions={transactions} />
       
       <ConfirmDialog 
         isOpen={confirmDelete.isOpen}

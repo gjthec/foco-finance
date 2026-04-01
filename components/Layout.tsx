@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { LayoutDashboard, Users, LogOut, Wallet, Sun, Moon, User, X, ChevronRight, ArrowLeft, Menu as MenuIcon } from 'lucide-react';
+import { LayoutDashboard, Users, LogOut, Wallet, Sun, Moon, User, X, ChevronRight, ArrowLeft, Menu as MenuIcon, Repeat } from 'lucide-react';
 import { auth } from '../firebase';
 import { storage } from '../storage';
 import ConfirmDialog from './ConfirmDialog';
@@ -26,6 +26,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleTheme, theme }) => {
     if (location.pathname.startsWith('/dashboard')) return { title: 'Início', showBack: false };
     if (location.pathname.startsWith('/ledger/')) return { title: 'Detalhes', showBack: true, backTo: '/ledger' };
     if (location.pathname === '/ledger') return { title: 'Dívidas', showBack: false };
+    if (location.pathname === '/subscriptions') return { title: 'Assinaturas', showBack: false };
     return { title: 'Foco', showBack: false };
   };
 
@@ -50,6 +51,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleTheme, theme }) => {
   const navItems = [
     { label: 'Início', icon: LayoutDashboard, path: '/dashboard' },
     { label: 'Dívidas', icon: Users, path: '/ledger' },
+    { label: 'Assinaturas', icon: Repeat, path: '/subscriptions' },
   ];
 
   if (isPublic) {
@@ -180,6 +182,17 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleTheme, theme }) => {
           <Users size={24} strokeWidth={location.pathname.startsWith('/ledger') ? 2.5 : 2} />
           <span className="text-[10px] font-black uppercase tracking-widest">Dívidas</span>
           {location.pathname.startsWith('/ledger') && <div className="w-1 h-1 bg-indigo-600 rounded-full mt-0.5" />}
+        </Link>
+
+        <Link
+          to="/subscriptions"
+          className={`flex flex-col items-center gap-1 transition-all active:scale-90 ${
+            location.pathname.startsWith('/subscriptions') ? 'text-indigo-600' : 'text-gray-400'
+          }`}
+        >
+          <Repeat size={24} strokeWidth={location.pathname.startsWith('/subscriptions') ? 2.5 : 2} />
+          <span className="text-[10px] font-black uppercase tracking-widest">Assinaturas</span>
+          {location.pathname.startsWith('/subscriptions') && <div className="w-1 h-1 bg-indigo-600 rounded-full mt-0.5" />}
         </Link>
 
         <button
