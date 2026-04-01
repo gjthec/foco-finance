@@ -84,7 +84,7 @@ const Subscriptions: React.FC = () => {
                     {subscription.isActive ? 'ATIVA' : 'INATIVA'}
                   </span>
                   <span>•</span>
-                  <span>{subscription.hasIndefiniteEndDate ?? !subscription.endDate ? 'Sem fim' : `Até ${new Date(subscription.endDate! + 'T12:00:00').toLocaleDateString('pt-BR')}`}</span>
+                  <span>{subscription.hasIndefiniteEndDate ?? !subscription.endDate ? 'Sem fim' : `Até ${new Date((subscription.endDate || '') + 'T12:00:00').toLocaleDateString('pt-BR')}`}</span>
                 </div>
               </div>
 

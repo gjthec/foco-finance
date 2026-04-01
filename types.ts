@@ -19,11 +19,11 @@ export interface Subscription {
   title: string;
   amount: number;
   type: TransactionType;
-  category?: string;
-  description?: string;
+  category?: string | null;
+  description?: string | null;
   dueDay: number;
   startDate: string;
-  endDate?: string;
+  endDate?: string | null;
   hasIndefiniteEndDate?: boolean;
   isActive: boolean;
   recurrence: SubscriptionRecurrence;

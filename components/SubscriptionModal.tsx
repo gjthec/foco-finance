@@ -11,6 +11,14 @@ interface SubscriptionModalProps {
 }
 
 const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, onSave, initialData }) => {
+  const sanitizeFirestorePayload = <T extends Record<string, any>>(payload: T): T => {
+    return Object.entries(payload).reduce((acc, [key, value]) => {
+      if (value === undefined) return acc;
+      acc[key as keyof T] = value as T[keyof T];
+      return acc;
+    }, {} as T);
+  };
+
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<TransactionType>('EXPENSE');
@@ -75,23 +83,23 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
     }
 
     const now = Date.now();
-    const subscription: Subscription = {
+    const rawSubscription: Subscription = {
       id: initialData?.id || Math.random().toString(36).slice(2, 11),
       title: title.trim(),
       amount: parsedAmount,
       type,
       dueDay: Math.min(31, Math.max(1, dueDay)),
       startDate,
-      endDate: hasIndefiniteEndDate ? undefined : (endDate || undefined),
+      endDate: hasIndefiniteEndDate ? null : (endDate || null),
       hasIndefiniteEndDate,
-      category,
-      description,
+      category: category || null,
+      description: description || null,
       isActive,
       recurrence: 'MONTHLY',
       createdAt: initialData?.createdAt || now,
-      updatedAt: now,
-      ownerType: initialData?.ownerType
+      updatedAt: now
     };
+    const subscription = sanitizeFirestorePayload(rawSubscription);
 
     setIsSaving(true);
     try {
