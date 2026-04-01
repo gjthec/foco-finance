@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, ArrowUpCircle, ArrowDownCircle, Landmark, Calendar, Edit2, Trash2, FileText, ExternalLink, Loader2, Filter, CheckCircle } from 'lucide-react';
-import { Transaction, TransactionType, Ledger } from '../types';
+import { Subscription, Transaction, TransactionType, Ledger } from '../types';
 import { storage } from '../storage';
 import { TRANSACTION_CATEGORIES } from '../constants';
 import TransactionModal from '../components/TransactionModal';
@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | undefined>();
@@ -27,12 +28,14 @@ const Dashboard: React.FC = () => {
   const loadData = async () => {
     if (transactions.length === 0) setIsLoading(true);
     try {
-      const [txs, ldgs] = await Promise.all([
+      const [txs, ldgs, subs] = await Promise.all([
         storage.getTransactions(),
-        storage.getLedgers()
+        storage.getLedgers(),
+        storage.getSubscriptions()
       ]);
       setTransactions(txs);
       setLedgers(ldgs);
+      setSubscriptions(subs);
     } catch (e) {
       console.error("Erro ao carregar dados", e);
     } finally {
@@ -61,6 +64,37 @@ const Dashboard: React.FC = () => {
       throw e;
     }
   };
+
+  const getMonthDate = (month: string) => {
+    const [y, m] = month.split('-').map(Number);
+    return new Date(y, m - 1, 1);
+  };
+
+  const generateRecurringItems = useMemo(() => {
+    const targetMonthDate = getMonthDate(selectedMonth);
+    return subscriptions.flatMap((subscription) => {
+      if (!subscription.isActive) return [];
+      const startMonth = subscription.startDate.slice(0, 7);
+      const endMonth = subscription.endDate?.slice(0, 7);
+      const hasIndefiniteEndDate = subscription.hasIndefiniteEndDate ?? !subscription.endDate;
+      if (selectedMonth < startMonth) return [];
+      if (!hasIndefiniteEndDate && endMonth && selectedMonth > endMonth) return [];
+
+      const daysInMonth = new Date(targetMonthDate.getFullYear(), targetMonthDate.getMonth() + 1, 0).getDate();
+      const day = Math.min(subscription.dueDay, daysInMonth);
+      const competenceDate = `${selectedMonth}-${String(day).padStart(2, '0')}`;
+      return [{
+        id: `sub-${subscription.id}-${selectedMonth}`,
+        date: competenceDate,
+        type: subscription.type,
+        value: subscription.amount,
+        category: subscription.category || 'Assinatura',
+        note: subscription.title,
+        isRecurring: true,
+        subscriptionId: subscription.id
+      }];
+    });
+  }, [subscriptions, selectedMonth]);
 
   const executeDelete = async () => {
     const id = confirmDelete.id;
@@ -110,7 +144,7 @@ const Dashboard: React.FC = () => {
 
   const filteredTransactions = useMemo(() => {
     const realFiltered = transactions.filter(tx => tx.date.startsWith(selectedMonth));
-    const combined = [...ledgerTransactions, ...realFiltered].filter(tx => {
+    const combined = [...ledgerTransactions, ...generateRecurringItems, ...realFiltered].filter(tx => {
       const matchesSearch = tx.note?.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           tx.category.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesType = typeFilter === 'ALL' || tx.type === typeFilter;
@@ -122,7 +156,7 @@ const Dashboard: React.FC = () => {
       if (b.date === 'Fluxo Mensal') return 1;
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
-  }, [transactions, ledgerTransactions, selectedMonth, searchTerm, typeFilter, categoryFilter]);
+  }, [transactions, ledgerTransactions, generateRecurringItems, selectedMonth, searchTerm, typeFilter, categoryFilter]);
 
   const stats = useMemo(() => {
     return filteredTransactions.reduce((acc, tx) => {
@@ -234,6 +268,7 @@ const Dashboard: React.FC = () => {
           filteredTransactions.map(tx => {
             const isLedger = 'isLedgerSummary' in tx;
             const isPaid = tx.isPaid;
+            const isRecurring = 'isRecurring' in tx;
             
             return (
               <div 
@@ -264,6 +299,12 @@ const Dashboard: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-2 text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">
                     <span className={isLedger ? (isPaid ? 'text-gray-400' : 'text-indigo-600 dark:text-indigo-400') : ''}>{tx.category}</span>
+                    {isRecurring && (
+                      <>
+                        <span>•</span>
+                        <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300">RECORRENTE</span>
+                      </>
+                    )}
                     <span>•</span>
                     <span>{isPaid ? 'LIQUIDADO' : (tx.date === 'Fluxo Mensal' ? `PENDENTE` : new Date(tx.date + 'T12:00:00').toLocaleDateString('pt-BR'))}</span>
                   </div>
@@ -281,12 +322,16 @@ const Dashboard: React.FC = () => {
                     </button>
                   ) : (
                     <>
-                      <button onClick={() => { setEditingTx(tx); setIsModalOpen(true); }} className="p-3 text-gray-400 hover:text-indigo-600 active:bg-gray-100 dark:active:bg-slate-800 rounded-xl transition-colors">
-                        <Edit2 size={20} />
-                      </button>
-                      <button onClick={() => setConfirmDelete({ isOpen: true, id: tx.id })} className="p-3 text-gray-400 hover:text-rose-600 active:bg-rose-50 rounded-xl transition-colors">
-                        <Trash2 size={20} />
-                      </button>
+                      {!isRecurring && (
+                        <>
+                          <button onClick={() => { setEditingTx(tx); setIsModalOpen(true); }} className="p-3 text-gray-400 hover:text-indigo-600 active:bg-gray-100 dark:active:bg-slate-800 rounded-xl transition-colors">
+                            <Edit2 size={20} />
+                          </button>
+                          <button onClick={() => setConfirmDelete({ isOpen: true, id: tx.id })} className="p-3 text-gray-400 hover:text-rose-600 active:bg-rose-50 rounded-xl transition-colors">
+                            <Trash2 size={20} />
+                          </button>
+                        </>
+                      )}
                     </>
                   )}
                 </div>

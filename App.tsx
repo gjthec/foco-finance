@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import LedgerList from './pages/LedgerList';
 import LedgerDetail from './pages/LedgerDetail';
+import Subscriptions from './pages/Subscriptions';
 import { storage } from './storage';
 import { auth, FIREBASE_READY } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -97,6 +98,12 @@ const App: React.FC = () => {
           <Route path="/ledger/:id" element={
             <ProtectedRoute isAuthenticated={authState.isAuthenticated} toggleTheme={toggleTheme} theme={theme}>
               <LedgerDetail />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/subscriptions" element={
+            <ProtectedRoute isAuthenticated={authState.isAuthenticated} toggleTheme={toggleTheme} theme={theme}>
+              <Subscriptions />
             </ProtectedRoute>
           } />
 

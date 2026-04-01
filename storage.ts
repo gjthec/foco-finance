@@ -1,5 +1,5 @@
 
-import { Transaction, Ledger, AuthState } from './types';
+import { Transaction, Ledger, AuthState, Subscription, SubscriptionMonthStatus } from './types';
 import { db, auth, FIREBASE_READY } from './firebase';
 import { 
   collection, 
@@ -20,7 +20,9 @@ const KEYS = {
   AUTH: 'foco_finance_auth',
   THEME: 'foco_finance_theme',
   TRANSACTIONS: 'foco_finance_transactions',
-  LEDGERS: 'foco_finance_ledgers'
+  LEDGERS: 'foco_finance_ledgers',
+  SUBSCRIPTIONS: 'foco_finance_subscriptions',
+  SUBSCRIPTION_MONTH_STATUS: 'foco_finance_subscription_month_status'
 };
 
 export const storage = {
@@ -86,6 +88,65 @@ export const storage = {
     }
     const txs = await storage.getTransactions();
     localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(txs.filter(t => t.id !== id)));
+  },
+
+  // --- ASSINATURAS RECORRENTES ---
+  getSubscriptions: async (): Promise<Subscription[]> => {
+    if (USE_FIREBASE && auth.currentUser) {
+      try {
+        const q = query(collection(db, 'users', auth.currentUser.uid, 'subscriptions'), orderBy('createdAt', 'desc'));
+        const snapshot = await getDocs(q);
+        const subscriptions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Subscription));
+        localStorage.setItem(KEYS.SUBSCRIPTIONS, JSON.stringify(subscriptions));
+        return subscriptions;
+      } catch (e) {
+        console.warn("Firestore fail, using local cache", e);
+      }
+    }
+    const data = localStorage.getItem(KEYS.SUBSCRIPTIONS);
+    return data ? JSON.parse(data) : [];
+  },
+  saveSubscription: async (subscription: Subscription) => {
+    if (USE_FIREBASE && auth.currentUser) {
+      await setDoc(doc(db, 'users', auth.currentUser.uid, 'subscriptions', subscription.id), subscription);
+    }
+    const subscriptions = await storage.getSubscriptions();
+    const index = subscriptions.findIndex(s => s.id === subscription.id);
+    if (index > -1) subscriptions[index] = subscription;
+    else subscriptions.unshift(subscription);
+    localStorage.setItem(KEYS.SUBSCRIPTIONS, JSON.stringify(subscriptions));
+  },
+  deleteSubscription: async (id: string) => {
+    if (USE_FIREBASE && auth.currentUser) {
+      await deleteDoc(doc(db, 'users', auth.currentUser.uid, 'subscriptions', id));
+    }
+    const subscriptions = await storage.getSubscriptions();
+    localStorage.setItem(KEYS.SUBSCRIPTIONS, JSON.stringify(subscriptions.filter(s => s.id !== id)));
+  },
+  getSubscriptionMonthStatuses: async (): Promise<SubscriptionMonthStatus[]> => {
+    if (USE_FIREBASE && auth.currentUser) {
+      try {
+        const q = query(collection(db, 'users', auth.currentUser.uid, 'subscription_month_status'), orderBy('updatedAt', 'desc'));
+        const snapshot = await getDocs(q);
+        const statuses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SubscriptionMonthStatus));
+        localStorage.setItem(KEYS.SUBSCRIPTION_MONTH_STATUS, JSON.stringify(statuses));
+        return statuses;
+      } catch (e) {
+        console.warn("Firestore fail, using local cache", e);
+      }
+    }
+    const data = localStorage.getItem(KEYS.SUBSCRIPTION_MONTH_STATUS);
+    return data ? JSON.parse(data) : [];
+  },
+  saveSubscriptionMonthStatus: async (status: SubscriptionMonthStatus) => {
+    if (USE_FIREBASE && auth.currentUser) {
+      await setDoc(doc(db, 'users', auth.currentUser.uid, 'subscription_month_status', status.id), status);
+    }
+    const statuses = await storage.getSubscriptionMonthStatuses();
+    const index = statuses.findIndex(s => s.id === status.id);
+    if (index > -1) statuses[index] = status;
+    else statuses.unshift(status);
+    localStorage.setItem(KEYS.SUBSCRIPTION_MONTH_STATUS, JSON.stringify(statuses));
   },
 
   // --- LEDGERS ---

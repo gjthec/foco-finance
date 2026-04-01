@@ -1,5 +1,7 @@
 
 export type TransactionType = 'INCOME' | 'EXPENSE';
+export type SubscriptionRecurrence = 'MONTHLY';
+export type SubscriptionOwnerType = 'INDIVIDUAL' | 'SHARED';
 
 export interface Transaction {
   id: string;
@@ -10,6 +12,35 @@ export interface Transaction {
   person?: string;
   note?: string;
   isPjSalary?: boolean;
+}
+
+export interface Subscription {
+  id: string;
+  title: string;
+  amount: number;
+  type: TransactionType;
+  category?: string | null;
+  description?: string | null;
+  dueDay: number;
+  startDate: string;
+  endDate?: string | null;
+  hasIndefiniteEndDate?: boolean;
+  isActive: boolean;
+  recurrence: SubscriptionRecurrence;
+  ownerType?: SubscriptionOwnerType;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SubscriptionMonthStatus {
+  id: string;
+  subscriptionId: string;
+  competence: string; // YYYY-MM
+  status: 'paid' | 'pending' | 'ignored' | 'postponed';
+  paidAt?: number;
+  amountSnapshot?: number;
+  titleSnapshot?: string;
+  updatedAt: number;
 }
 
 export interface LedgerEntry {
