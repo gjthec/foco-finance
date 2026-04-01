@@ -17,6 +17,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
   const [dueDay, setDueDay] = useState(5);
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [endDate, setEndDate] = useState('');
+  const [hasIndefiniteEndDate, setHasIndefiniteEndDate] = useState(true);
   const [category, setCategory] = useState('Moradia');
   const [description, setDescription] = useState('');
   const [isActive, setIsActive] = useState(true);
@@ -35,6 +36,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
       setDueDay(initialData.dueDay);
       setStartDate(initialData.startDate);
       setEndDate(initialData.endDate || '');
+      setHasIndefiniteEndDate(initialData.hasIndefiniteEndDate ?? !initialData.endDate);
       setCategory(initialData.category || 'Moradia');
       setDescription(initialData.description || '');
       setIsActive(initialData.isActive);
@@ -45,6 +47,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
       setDueDay(5);
       setStartDate(new Date().toISOString().slice(0, 10));
       setEndDate('');
+      setHasIndefiniteEndDate(true);
       setCategory('Moradia');
       setDescription('');
       setIsActive(true);
@@ -79,7 +82,8 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
       type,
       dueDay: Math.min(31, Math.max(1, dueDay)),
       startDate,
-      endDate: endDate || undefined,
+      endDate: hasIndefiniteEndDate ? undefined : (endDate || undefined),
+      hasIndefiniteEndDate,
       category,
       description,
       isActive,
@@ -154,7 +158,26 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
             </div>
             <div>
               <label className="block text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Data de fim</label>
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500" />
+              <input
+                type="date"
+                value={endDate}
+                disabled={hasIndefiniteEndDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+              />
+              <label className="mt-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-slate-500">
+                <input
+                  type="checkbox"
+                  checked={hasIndefiniteEndDate}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setHasIndefiniteEndDate(checked);
+                    if (checked) setEndDate('');
+                  }}
+                  className="w-4 h-4 accent-indigo-600"
+                />
+                Fim indeterminado
+              </label>
             </div>
           </div>
 

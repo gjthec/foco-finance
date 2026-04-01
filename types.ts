@@ -24,6 +24,7 @@ export interface Subscription {
   dueDay: number;
   startDate: string;
   endDate?: string;
+  hasIndefiniteEndDate?: boolean;
   isActive: boolean;
   recurrence: SubscriptionRecurrence;
   ownerType?: SubscriptionOwnerType;

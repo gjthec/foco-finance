@@ -76,8 +76,9 @@ const Dashboard: React.FC = () => {
       if (!subscription.isActive) return [];
       const startMonth = subscription.startDate.slice(0, 7);
       const endMonth = subscription.endDate?.slice(0, 7);
+      const hasIndefiniteEndDate = subscription.hasIndefiniteEndDate ?? !subscription.endDate;
       if (selectedMonth < startMonth) return [];
-      if (endMonth && selectedMonth > endMonth) return [];
+      if (!hasIndefiniteEndDate && endMonth && selectedMonth > endMonth) return [];
 
       const daysInMonth = new Date(targetMonthDate.getFullYear(), targetMonthDate.getMonth() + 1, 0).getDate();
       const day = Math.min(subscription.dueDay, daysInMonth);
