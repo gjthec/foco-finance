@@ -71,7 +71,9 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
       value: finalVal,
       category,
       note,
-      isPjSalary: isPj
+      isPjSalary: isPj,
+      paid: initialData?.paid ?? false,
+      paidAt: initialData?.paidAt
     };
 
     try {

@@ -12,6 +12,8 @@ export interface Transaction {
   person?: string;
   note?: string;
   isPjSalary?: boolean;
+  paid?: boolean;
+  paidAt?: string;
 }
 
 export interface Subscription {

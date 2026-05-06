@@ -113,8 +113,13 @@ const Dashboard: React.FC = () => {
   };
 
 
-
   const getSelectedMonthKey = (selectedDate: string) => selectedDate.slice(0, 7);
+
+  const isExpenseItem = (transaction: any) => transaction.type === 'EXPENSE' && !('isLedgerSummary' in transaction);
+
+  const isRecurringExpense = (transaction: any) => Boolean(transaction.subscriptionId && transaction.type === 'EXPENSE');
+
+  const isRegularExpensePaid = (transaction: Transaction) => Boolean(transaction.paid);
 
   const isRecurringExpensePaid = (transaction: any, selectedMonthKey: string) => {
     if (!transaction.subscriptionId || transaction.type !== 'EXPENSE') return false;
@@ -123,6 +128,25 @@ const Dashboard: React.FC = () => {
       status.competence === selectedMonthKey &&
       status.status === 'paid'
     );
+  };
+
+  const isItemPaid = (transaction: any, selectedMonthKey: string) => {
+    if ('isLedgerSummary' in transaction) return Boolean(transaction.isPaid);
+    if (!isExpenseItem(transaction)) return false;
+    if (isRecurringExpense(transaction)) return isRecurringExpensePaid(transaction, selectedMonthKey);
+    return isRegularExpensePaid(transaction as Transaction);
+  };
+
+  const toggleRegularExpensePaid = async (transaction: Transaction) => {
+    const nextPaid = !transaction.paid;
+    const updatedTx: Transaction = {
+      ...transaction,
+      paid: nextPaid,
+      paidAt: nextPaid ? new Date().toISOString() : undefined
+    };
+
+    setTransactions((prev) => prev.map((item) => item.id === transaction.id ? updatedTx : item));
+    await storage.saveTransaction(updatedTx);
   };
 
   const toggleRecurringExpensePaid = async (transaction: any, selectedMonthKey: string) => {
@@ -315,9 +339,8 @@ const Dashboard: React.FC = () => {
         ) : (
           filteredTransactions.map(tx => {
             const isLedger = 'isLedgerSummary' in tx;
-            const isRecurring = 'isRecurring' in tx;
-            const recurringPaid = isRecurring && tx.type === 'EXPENSE' && isRecurringExpensePaid(tx, getSelectedMonthKey(selectedMonth));
-            const isPaid = tx.isPaid || recurringPaid;
+            const isRecurring = isRecurringExpense(tx);
+            const isPaid = isItemPaid(tx, getSelectedMonthKey(selectedMonth));
             
             return (
               <div 
@@ -330,14 +353,17 @@ const Dashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={(e) => {
-                    if (isRecurring && tx.type === 'EXPENSE') {
-                      e.stopPropagation();
+                    if (!isExpenseItem(tx)) return;
+                    e.stopPropagation();
+                    if (isRecurringExpense(tx)) {
                       toggleRecurringExpensePaid(tx, getSelectedMonthKey(selectedMonth));
+                      return;
                     }
+                    toggleRegularExpensePaid(tx as Transaction);
                   }}
-                  title={isRecurring && tx.type === 'EXPENSE' ? (isPaid ? 'Desfazer pagamento' : 'Marcar como pago') : ''}
+                  title={isExpenseItem(tx) ? (isPaid ? 'Desfazer pagamento' : 'Marcar como pago') : ''}
                   className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 transition-all ${
-                    isRecurring && tx.type === 'EXPENSE' ? 'cursor-pointer hover:scale-105' : 'cursor-default'
+                    isExpenseItem(tx) ? 'cursor-pointer hover:scale-105' : 'cursor-default'
                   } ${
                     isPaid ? 'bg-gray-100 dark:bg-slate-800 text-gray-500' :
                     tx.type === 'INCOME' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600' : 'bg-rose-50 dark:bg-rose-900/20 text-rose-600'
@@ -370,6 +396,12 @@ const Dashboard: React.FC = () => {
                             <span className="px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-slate-300">PAGO</span>
                           </>
                         )}
+                      </>
+                    )}
+                    {!isRecurring && isPaid && tx.type === 'EXPENSE' && (
+                      <>
+                        <span>•</span>
+                        <span className="px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-slate-300">PAGO</span>
                       </>
                     )}
                     <span>•</span>
