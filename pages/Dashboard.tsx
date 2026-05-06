@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, ArrowUpCircle, ArrowDownCircle, Landmark, Calendar, Edit2, Trash2, FileText, ExternalLink, Loader2, Filter, CheckCircle } from 'lucide-react';
-import { Subscription, Transaction, TransactionType, Ledger } from '../types';
+import { Subscription, Transaction, TransactionType, Ledger, SubscriptionMonthStatus } from '../types';
 import { storage } from '../storage';
 import { TRANSACTION_CATEGORIES } from '../constants';
 import TransactionModal from '../components/TransactionModal';
@@ -13,6 +13,7 @@ const Dashboard: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
+  const [subscriptionMonthStatuses, setSubscriptionMonthStatuses] = useState<SubscriptionMonthStatus[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | undefined>();
   const [isLoading, setIsLoading] = useState(true);
@@ -28,14 +29,16 @@ const Dashboard: React.FC = () => {
   const loadData = async () => {
     if (transactions.length === 0) setIsLoading(true);
     try {
-      const [txs, ldgs, subs] = await Promise.all([
+      const [txs, ldgs, subs, subStatuses] = await Promise.all([
         storage.getTransactions(),
         storage.getLedgers(),
-        storage.getSubscriptions()
+        storage.getSubscriptions(),
+        storage.getSubscriptionMonthStatuses()
       ]);
       setTransactions(txs);
       setLedgers(ldgs);
       setSubscriptions(subs);
+      setSubscriptionMonthStatuses(subStatuses);
     } catch (e) {
       console.error("Erro ao carregar dados", e);
     } finally {
@@ -107,6 +110,51 @@ const Dashboard: React.FC = () => {
     } catch (e) {
       setTransactions(oldTransactions);
     }
+  };
+
+
+
+  const getSelectedMonthKey = (selectedDate: string) => selectedDate.slice(0, 7);
+
+  const isRecurringExpensePaid = (transaction: any, selectedMonthKey: string) => {
+    if (!transaction.subscriptionId || transaction.type !== 'EXPENSE') return false;
+    return subscriptionMonthStatuses.some((status) =>
+      status.subscriptionId === transaction.subscriptionId &&
+      status.competence === selectedMonthKey &&
+      status.status === 'paid'
+    );
+  };
+
+  const toggleRecurringExpensePaid = async (transaction: any, selectedMonthKey: string) => {
+    if (!transaction.subscriptionId || transaction.type !== 'EXPENSE') return;
+
+    const existingStatus = subscriptionMonthStatuses.find((status) =>
+      status.subscriptionId === transaction.subscriptionId && status.competence === selectedMonthKey
+    );
+
+    const isPaid = existingStatus?.status === 'paid';
+    const nextStatus: SubscriptionMonthStatus = {
+      id: existingStatus?.id || `sub-status-${transaction.subscriptionId}-${selectedMonthKey}`,
+      subscriptionId: transaction.subscriptionId,
+      competence: selectedMonthKey,
+      status: isPaid ? 'pending' : 'paid',
+      paidAt: isPaid ? undefined : Date.now(),
+      amountSnapshot: transaction.value,
+      titleSnapshot: transaction.note || transaction.category,
+      updatedAt: Date.now()
+    };
+
+    setSubscriptionMonthStatuses((prev) => {
+      const idx = prev.findIndex((status) => status.id === nextStatus.id);
+      if (idx > -1) {
+        const updated = [...prev];
+        updated[idx] = nextStatus;
+        return updated;
+      }
+      return [nextStatus, ...prev];
+    });
+
+    await storage.saveSubscriptionMonthStatus(nextStatus);
   };
 
   const ledgerTransactions = useMemo(() => {
@@ -267,8 +315,9 @@ const Dashboard: React.FC = () => {
         ) : (
           filteredTransactions.map(tx => {
             const isLedger = 'isLedgerSummary' in tx;
-            const isPaid = tx.isPaid;
             const isRecurring = 'isRecurring' in tx;
+            const recurringPaid = isRecurring && tx.type === 'EXPENSE' && isRecurringExpensePaid(tx, getSelectedMonthKey(selectedMonth));
+            const isPaid = tx.isPaid || recurringPaid;
             
             return (
               <div 
@@ -278,12 +327,24 @@ const Dashboard: React.FC = () => {
                   isLedger ? 'border-indigo-400 dark:border-indigo-600 bg-indigo-50/10 dark:bg-indigo-900/10' : 'border-gray-100 dark:border-slate-800 shadow-sm'
                 }`}
               >
-                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${
-                  isPaid ? 'bg-emerald-50 dark:bg-emerald-900/10 text-emerald-500' :
-                  tx.type === 'INCOME' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600' : 'bg-rose-50 dark:bg-rose-900/20 text-rose-600'
-                }`}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    if (isRecurring && tx.type === 'EXPENSE') {
+                      e.stopPropagation();
+                      toggleRecurringExpensePaid(tx, getSelectedMonthKey(selectedMonth));
+                    }
+                  }}
+                  title={isRecurring && tx.type === 'EXPENSE' ? (isPaid ? 'Desfazer pagamento' : 'Marcar como pago') : ''}
+                  className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 transition-all ${
+                    isRecurring && tx.type === 'EXPENSE' ? 'cursor-pointer hover:scale-105' : 'cursor-default'
+                  } ${
+                    isPaid ? 'bg-gray-100 dark:bg-slate-800 text-gray-500' :
+                    tx.type === 'INCOME' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600' : 'bg-rose-50 dark:bg-rose-900/20 text-rose-600'
+                  }`}
+                >
                   {isPaid ? <CheckCircle size={28} strokeWidth={2.5} /> : (tx.type === 'INCOME' ? <ArrowUpCircle size={28} strokeWidth={2.5} /> : <ArrowDownCircle size={28} strokeWidth={2.5} />)}
-                </div>
+                </button>
 
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start mb-1">
@@ -303,6 +364,12 @@ const Dashboard: React.FC = () => {
                       <>
                         <span>•</span>
                         <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300">RECORRENTE</span>
+                        {isPaid && tx.type === 'EXPENSE' && (
+                          <>
+                            <span>•</span>
+                            <span className="px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-slate-300">PAGO</span>
+                          </>
+                        )}
                       </>
                     )}
                     <span>•</span>
