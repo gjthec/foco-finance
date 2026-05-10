@@ -4,6 +4,7 @@ import { X, Calculator, Loader2, Check, CheckCircle } from 'lucide-react';
 import { Transaction, TransactionType } from '../types';
 import { TRANSACTION_CATEGORIES } from '../constants';
 import { storage } from '../storage';
+import AlertModal from './AlertModal';
 
 interface TransactionModalProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
   const [isSaving, setIsSaving] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
+  const [alertMessage, setAlertMessage] = useState('');
 
   // PJ Logic
   const [currentGross, setCurrentGross] = useState<string>('');
@@ -65,7 +67,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
     const finalVal = parseFloat(value);
     
     if (isNaN(finalVal) || finalVal < 0) {
-      alert("O valor não pode ser negativo.");
+      setAlertMessage('O valor não pode ser negativo.');
       return;
     }
 
@@ -85,7 +87,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
     };
 
     try {
-      if (type === 'RESERVE' && !vaultId) { alert('Selecione um cofre.'); setIsSaving(false); return; }
+      if (type === 'RESERVE' && !vaultId) { setAlertMessage('Selecione um cofre para guardar o valor.'); setIsSaving(false); return; }
       await onSave(tx);
       setIsSuccess(true);
       setTimeout(() => {
@@ -118,6 +120,8 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
   if (!isOpen) return null;
 
   return (
+    <>
+    <AlertModal isOpen={Boolean(alertMessage)} message={alertMessage} onClose={() => setAlertMessage('')} />
     <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
       <div className={`bg-white dark:bg-slate-900 w-full max-w-lg md:rounded-3xl rounded-t-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[92vh] md:h-auto border border-gray-100 dark:border-slate-800 transition-all duration-300 animate-in slide-in-from-bottom md:slide-in-from-bottom-0 md:zoom-in-95 ${isSuccess ? 'scale-[0.98] opacity-90' : 'scale-100'}`}>
         
@@ -295,6 +299,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
         </div>
       </div>
     </div>
+    </>
   );
 };
 

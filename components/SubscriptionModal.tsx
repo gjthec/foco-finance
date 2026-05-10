@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, Loader2, Check, CheckCircle } from 'lucide-react';
 import { Subscription, TransactionType } from '../types';
+import AlertModal from './AlertModal';
 import { TRANSACTION_CATEGORIES } from '../constants';
 
 interface SubscriptionModalProps {
@@ -31,6 +32,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
   const [isActive, setIsActive] = useState(true);
 
   const [isSaving, setIsSaving] = useState(false);
+  const [alertMessage, setAlertMessage] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
 
   useEffect(() => {
@@ -74,11 +76,11 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
     const parsedAmount = parseFloat(amount);
 
     if (!title.trim()) {
-      alert('Informe o nome da assinatura.');
+      setAlertMessage('Informe o nome da assinatura.');
       return;
     }
     if (isNaN(parsedAmount) || parsedAmount < 0) {
-      alert('Informe um valor válido.');
+      setAlertMessage('Informe um valor válido.');
       return;
     }
 
@@ -115,6 +117,8 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
   if (!isOpen) return null;
 
   return (
+    <>
+    <AlertModal isOpen={Boolean(alertMessage)} message={alertMessage} onClose={() => setAlertMessage('')} />
     <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
       <div className={`bg-white dark:bg-slate-900 w-full max-w-lg md:rounded-3xl rounded-t-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[92vh] md:h-auto border border-gray-100 dark:border-slate-800 transition-all duration-300 animate-in slide-in-from-bottom md:slide-in-from-bottom-0 md:zoom-in-95 ${isSuccess ? 'scale-[0.98] opacity-90' : 'scale-100'}`}>
         {isSuccess && (
@@ -219,6 +223,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
         </div>
       </div>
     </div>
+    </>
   );
 };
 
