@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { LayoutDashboard, Users, LogOut, Wallet, Sun, Moon, User, X, ChevronRight, ArrowLeft, Menu as MenuIcon, Repeat } from 'lucide-react';
+import { LayoutDashboard, Users, LogOut, Wallet, Sun, Moon, User, X, ArrowLeft, Menu as MenuIcon, Repeat, PiggyBank } from 'lucide-react';
 import { auth } from '../firebase';
 import { storage } from '../storage';
 import ConfirmDialog from './ConfirmDialog';
@@ -27,6 +27,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleTheme, theme }) => {
     if (location.pathname.startsWith('/ledger/')) return { title: 'Detalhes', showBack: true, backTo: '/ledger' };
     if (location.pathname === '/ledger') return { title: 'Dívidas', showBack: false };
     if (location.pathname === '/subscriptions') return { title: 'Assinaturas', showBack: false };
+    if (location.pathname === '/vaults') return { title: 'Cofres', showBack: false };
     return { title: 'Foco', showBack: false };
   };
 
@@ -52,6 +53,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleTheme, theme }) => {
     { label: 'Início', icon: LayoutDashboard, path: '/dashboard' },
     { label: 'Dívidas', icon: Users, path: '/ledger' },
     { label: 'Assinaturas', icon: Repeat, path: '/subscriptions' },
+    { label: 'Cofres', icon: PiggyBank, path: '/vaults' },
   ];
 
   if (isPublic) {
@@ -193,6 +195,17 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleTheme, theme }) => {
           <Repeat size={24} strokeWidth={location.pathname.startsWith('/subscriptions') ? 2.5 : 2} />
           <span className="text-[10px] font-black uppercase tracking-widest">Assinaturas</span>
           {location.pathname.startsWith('/subscriptions') && <div className="w-1 h-1 bg-indigo-600 rounded-full mt-0.5" />}
+        </Link>
+
+        <Link
+          to="/vaults"
+          className={`flex flex-col items-center gap-1 transition-all active:scale-90 ${
+            location.pathname.startsWith('/vaults') ? 'text-indigo-600' : 'text-gray-400'
+          }`}
+        >
+          <PiggyBank size={24} strokeWidth={location.pathname.startsWith('/vaults') ? 2.5 : 2} />
+          <span className="text-[10px] font-black uppercase tracking-widest">Cofres</span>
+          {location.pathname.startsWith('/vaults') && <div className="w-1 h-1 bg-indigo-600 rounded-full mt-0.5" />}
         </Link>
 
         <button

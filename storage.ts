@@ -1,5 +1,5 @@
 
-import { Transaction, Ledger, AuthState, Subscription, SubscriptionMonthStatus } from './types';
+import { Transaction, Ledger, AuthState, Subscription, SubscriptionMonthStatus, Vault, VaultMovement } from './types';
 import { db, auth, FIREBASE_READY } from './firebase';
 import { 
   collection, 
@@ -22,7 +22,9 @@ const KEYS = {
   TRANSACTIONS: 'foco_finance_transactions',
   LEDGERS: 'foco_finance_ledgers',
   SUBSCRIPTIONS: 'foco_finance_subscriptions',
-  SUBSCRIPTION_MONTH_STATUS: 'foco_finance_subscription_month_status'
+  SUBSCRIPTION_MONTH_STATUS: 'foco_finance_subscription_month_status',
+  VAULTS: 'foco_finance_vaults',
+  VAULT_MOVEMENTS: 'foco_finance_vault_movements'
 };
 
 export const storage = {
@@ -183,6 +185,30 @@ export const storage = {
   syncPublicLedger: async (ledger: Ledger) => {
     await storage.saveLedger(ledger);
   },
+
+
+  // --- COFRES ---
+  getVaults: async (): Promise<Vault[]> => {
+    const data = localStorage.getItem(KEYS.VAULTS);
+    return data ? JSON.parse(data) : [];
+  },
+  saveVault: async (vault: Vault) => {
+    const vaults = await storage.getVaults();
+    const index = vaults.findIndex(v => v.id === vault.id);
+    if (index > -1) vaults[index] = vault;
+    else vaults.unshift(vault);
+    localStorage.setItem(KEYS.VAULTS, JSON.stringify(vaults));
+  },
+  getVaultMovements: async (): Promise<VaultMovement[]> => {
+    const data = localStorage.getItem(KEYS.VAULT_MOVEMENTS);
+    return data ? JSON.parse(data) : [];
+  },
+  saveVaultMovement: async (movement: VaultMovement) => {
+    const items = await storage.getVaultMovements();
+    items.unshift(movement);
+    localStorage.setItem(KEYS.VAULT_MOVEMENTS, JSON.stringify(items));
+  },
+
   getLedgerBySlug: async (slug: string): Promise<Ledger | undefined> => {
     if (USE_FIREBASE) {
       try {

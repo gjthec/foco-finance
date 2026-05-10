@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { X, Calculator, Loader2, Check, CheckCircle } from 'lucide-react';
 import { Transaction, TransactionType } from '../types';
 import { TRANSACTION_CATEGORIES } from '../constants';
+import { storage } from '../storage';
+import AlertModal from './AlertModal';
 
 interface TransactionModalProps {
   isOpen: boolean;
@@ -17,12 +19,15 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
   const [type, setType] = useState<TransactionType>('EXPENSE');
   const [value, setValue] = useState<string>('');
   const [category, setCategory] = useState('Alimentação');
+  const [vaultId, setVaultId] = useState('');
+  const [vaults, setVaults] = useState<{ id: string; nome: string }[]>([]);
   const [note, setNote] = useState('');
   const [isPj, setIsPj] = useState(false);
   
   const [isSaving, setIsSaving] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
+  const [alertMessage, setAlertMessage] = useState('');
 
   // PJ Logic
   const [currentGross, setCurrentGross] = useState<string>('');
@@ -34,6 +39,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
       document.body.style.overflow = 'unset';
     }
     
+    storage.getVaults().then(v => setVaults(v.map(x => ({ id: x.id, nome: x.nome }))));
     if (initialData) {
       setDate(initialData.date);
       setType(initialData.type);
@@ -41,6 +47,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
       setCategory(initialData.category);
       setNote(initialData.note || '');
       setIsPj(initialData.isPjSalary || false);
+      setVaultId(initialData.vaultId || '');
     } else {
       setDate(new Date().toISOString().slice(0, 10));
       setType('EXPENSE');
@@ -49,6 +56,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
       setNote('');
       setIsPj(false);
       setCurrentGross('');
+      setVaultId('');
     }
     setIsSuccess(false);
     setIsSaving(false);
@@ -59,7 +67,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
     const finalVal = parseFloat(value);
     
     if (isNaN(finalVal) || finalVal < 0) {
-      alert("O valor não pode ser negativo.");
+      setAlertMessage('O valor não pode ser negativo.');
       return;
     }
 
@@ -73,10 +81,13 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
       note,
       isPjSalary: isPj,
       paid: initialData?.paid ?? false,
-      paidAt: initialData?.paidAt
+      paidAt: initialData?.paidAt,
+      vaultId: type === 'RESERVE' ? vaultId : undefined,
+      vaultStatus: type === 'RESERVE' ? 'GUARDADO' : undefined
     };
 
     try {
+      if (type === 'RESERVE' && !vaultId) { setAlertMessage('Selecione um cofre para guardar o valor.'); setIsSaving(false); return; }
       await onSave(tx);
       setIsSuccess(true);
       setTimeout(() => {
@@ -109,6 +120,8 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
   if (!isOpen) return null;
 
   return (
+    <>
+    <AlertModal isOpen={Boolean(alertMessage)} message={alertMessage} onClose={() => setAlertMessage('')} />
     <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
       <div className={`bg-white dark:bg-slate-900 w-full max-w-lg md:rounded-3xl rounded-t-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[92vh] md:h-auto border border-gray-100 dark:border-slate-800 transition-all duration-300 animate-in slide-in-from-bottom md:slide-in-from-bottom-0 md:zoom-in-95 ${isSuccess ? 'scale-[0.98] opacity-90' : 'scale-100'}`}>
         
@@ -153,6 +166,14 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
               className={`py-3 md:py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${type === 'INCOME' && !isPj ? 'bg-white dark:bg-slate-700 text-emerald-600 shadow-sm' : 'text-gray-500'}`}
             >
               Entrada
+            </button>
+            <button
+              type="button"
+              disabled={isSaving || isSuccess}
+              onClick={() => { setType('RESERVE'); setIsPj(false); }}
+              className={`py-3 md:py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${type === 'RESERVE' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500'}`}
+            >
+              Cofre
             </button>
             <button
               type="button"
@@ -208,6 +229,16 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
                 />
              </div>
           </div>
+
+          {type === 'RESERVE' && (
+            <div>
+              <label className="block text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Cofre de destino</label>
+              <select value={vaultId} onChange={(e) => setVaultId(e.target.value)} className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl dark:text-white outline-none">
+                <option value="">Selecione</option>
+                {vaults.map(v => <option key={v.id} value={v.id}>{v.nome}</option>)}
+              </select>
+            </div>
+          )}
 
           {isPj && (
             <div className="p-5 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800/50 rounded-2xl space-y-4 animate-in slide-in-from-top-2 duration-300">
@@ -268,6 +299,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, on
         </div>
       </div>
     </div>
+    </>
   );
 };
 

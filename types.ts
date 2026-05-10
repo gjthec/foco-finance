@@ -1,5 +1,5 @@
 
-export type TransactionType = 'INCOME' | 'EXPENSE';
+export type TransactionType = 'INCOME' | 'EXPENSE' | 'RESERVE';
 export type SubscriptionRecurrence = 'MONTHLY';
 export type SubscriptionOwnerType = 'INDIVIDUAL' | 'SHARED';
 
@@ -14,6 +14,29 @@ export interface Transaction {
   isPjSalary?: boolean;
   paid?: boolean;
   paidAt?: string;
+  vaultId?: string;
+  vaultStatus?: 'GUARDADO';
+}
+
+export interface Vault {
+  id: string;
+  nome: string;
+  descricao?: string;
+  valorAtual: number;
+  meta?: number;
+  createdAt: string;
+  updatedAt: string;
+  ativo: boolean;
+}
+
+export interface VaultMovement {
+  id: string;
+  cofreId: string;
+  tipo: 'DEPOSITO' | 'RETIRADA';
+  valor: number;
+  origem: 'LANCAMENTO_MENSAL' | 'AJUSTE_MANUAL';
+  mesReferencia?: string;
+  createdAt: string;
 }
 
 export interface Subscription {

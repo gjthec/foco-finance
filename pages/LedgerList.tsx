@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { Plus, Users, ArrowRight, Share2, X, UserPlus, Loader2, Check } from 'lucide-react';
 import { Ledger } from '../types';
 import { storage } from '../storage';
+import AlertModal from '../components/AlertModal';
 
 const LedgerList: React.FC = () => {
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
@@ -12,6 +13,7 @@ const LedgerList: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [newLedgerName, setNewLedgerName] = useState('');
   const [newFriendName, setNewFriendName] = useState('');
+  const [alertMessage, setAlertMessage] = useState('');
 
   const loadData = async () => {
     setIsLoading(true);
@@ -47,7 +49,7 @@ const LedgerList: React.FC = () => {
         setNewFriendName('');
         setIsModalOpen(false);
       } catch (err) {
-        alert("Erro ao criar ledger.");
+        setAlertMessage('Erro ao criar dívida compartilhada.');
       } finally {
         setIsSaving(false);
       }
@@ -66,6 +68,7 @@ const LedgerList: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
+      <AlertModal isOpen={Boolean(alertMessage)} message={alertMessage} onClose={() => setAlertMessage('')} />
       <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
         <div className="space-y-1">
           <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight leading-none">Dívidas</h1>

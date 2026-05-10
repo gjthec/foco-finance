@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, ArrowUpCircle, ArrowDownCircle, Landmark, Calendar, Edit2, Trash2, FileText, ExternalLink, Loader2, Filter, CheckCircle } from 'lucide-react';
-import { Subscription, Transaction, TransactionType, Ledger, SubscriptionMonthStatus } from '../types';
+import { Subscription, Transaction, TransactionType, Ledger, SubscriptionMonthStatus, Vault } from '../types';
 import { storage } from '../storage';
 import { TRANSACTION_CATEGORIES } from '../constants';
 import TransactionModal from '../components/TransactionModal';
@@ -14,6 +14,7 @@ const Dashboard: React.FC = () => {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const [subscriptionMonthStatuses, setSubscriptionMonthStatuses] = useState<SubscriptionMonthStatus[]>([]);
+  const [vaults, setVaults] = useState<Vault[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | undefined>();
   const [isLoading, setIsLoading] = useState(true);
@@ -29,16 +30,18 @@ const Dashboard: React.FC = () => {
   const loadData = async () => {
     if (transactions.length === 0) setIsLoading(true);
     try {
-      const [txs, ldgs, subs, subStatuses] = await Promise.all([
+      const [txs, ldgs, subs, subStatuses, vts] = await Promise.all([
         storage.getTransactions(),
         storage.getLedgers(),
         storage.getSubscriptions(),
-        storage.getSubscriptionMonthStatuses()
+        storage.getSubscriptionMonthStatuses(),
+        storage.getVaults()
       ]);
       setTransactions(txs);
       setLedgers(ldgs);
       setSubscriptions(subs);
       setSubscriptionMonthStatuses(subStatuses);
+      setVaults(vts);
     } catch (e) {
       console.error("Erro ao carregar dados", e);
     } finally {
@@ -62,6 +65,13 @@ const Dashboard: React.FC = () => {
         return [newTx, ...prev];
       });
       await storage.saveTransaction(newTx);
+      if (newTx.type === 'RESERVE' && newTx.vaultId) {
+        const target = (await storage.getVaults()).find(v => v.id === newTx.vaultId);
+        if (target) {
+          await storage.saveVault({ ...target, valorAtual: target.valorAtual + newTx.value, updatedAt: new Date().toISOString() });
+          await storage.saveVaultMovement({ id: crypto.randomUUID(), cofreId: target.id, tipo: 'DEPOSITO', valor: newTx.value, origem: 'LANCAMENTO_MENSAL', mesReferencia: newTx.date.slice(0,7), createdAt: new Date().toISOString() });
+        }
+      }
       loadData();
     } catch (e) {
       throw e;
@@ -233,11 +243,14 @@ const Dashboard: React.FC = () => {
   const stats = useMemo(() => {
     return filteredTransactions.reduce((acc, tx) => {
       if (tx.type === 'INCOME') acc.income += tx.value;
+      else if (tx.type === 'RESERVE') acc.reserve += tx.value;
       else acc.expense += tx.value;
       acc.balance = acc.income - acc.expense;
+      acc.freeBalance = acc.income - acc.expense - acc.reserve;
+      acc.reservedAssets = vaults.reduce((sum, v) => sum + v.valorAtual, 0);
       return acc;
-    }, { income: 0, expense: 0, balance: 0 });
-  }, [filteredTransactions]);
+    }, { income: 0, expense: 0, reserve: 0, balance: 0, freeBalance: 0, reservedAssets: 0 });
+  }, [filteredTransactions, vaults]);
 
   const formatBRL = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
@@ -298,6 +311,7 @@ const Dashboard: React.FC = () => {
                 <option value="ALL">Tipos</option>
                 <option value="INCOME">Entradas</option>
                 <option value="EXPENSE">Saídas</option>
+                <option value="RESERVE">Reservas</option>
               </select>
               <select
                 value={categoryFilter}
@@ -312,11 +326,12 @@ const Dashboard: React.FC = () => {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {[
           { label: 'Entradas', value: stats.income, icon: ArrowUpCircle, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
           { label: 'Saídas', value: stats.expense, icon: ArrowDownCircle, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-900/20' },
-          { label: 'Saldo Mensal', value: stats.balance, icon: Landmark, color: stats.balance >= 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-rose-600 dark:text-rose-400', bg: 'bg-indigo-50 dark:bg-indigo-900/20' }
+          { label: 'Reservas', value: stats.reserve, icon: Landmark, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-900/20' },
+          { label: 'Saldo Livre', value: stats.freeBalance, icon: Landmark, color: stats.freeBalance >= 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-rose-600 dark:text-rose-400', bg: 'bg-indigo-50 dark:bg-indigo-900/20' }
         ].map((stat, i) => (
           <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-[24px] border border-gray-100 dark:border-slate-800 shadow-sm flex items-center gap-4 transition-transform hover:scale-[1.02]">
             <div className={`p-3.5 ${stat.bg} ${stat.color} rounded-2xl shrink-0`}>
