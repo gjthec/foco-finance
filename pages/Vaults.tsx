@@ -34,11 +34,16 @@ const Vaults: React.FC = () => {
     const metaValor = meta ? Number(meta) : undefined;
     if (meta && Number.isNaN(metaValor)) return setAlertMessage('A meta deve ser numérica.');
     const now = new Date().toISOString();
-    await storage.saveVault({ id: crypto.randomUUID(), nome: nome.trim(), valorAtual: 0, meta: metaValor && metaValor > 0 ? metaValor : undefined, createdAt: now, updatedAt: now, ativo: true });
-    setShowCreate(false);
-    setNome('');
-    setMeta('');
-    load();
+    try {
+      await storage.saveVault({ id: crypto.randomUUID(), nome: nome.trim(), valorAtual: 0, meta: metaValor && metaValor > 0 ? metaValor : undefined, createdAt: now, updatedAt: now, ativo: true });
+      setShowCreate(false);
+      setNome('');
+      setMeta('');
+      load();
+    } catch (error: any) {
+      console.error('Erro ao criar cofre:', error);
+      setAlertMessage(error?.message || 'Não foi possível criar o cofre. Verifique sua conexão e as regras do Firestore.');
+    }
   };
 
   const openMovement = (vault: Vault, tipo: 'DEPOSITO' | 'RETIRADA') => {
@@ -53,10 +58,15 @@ const Vaults: React.FC = () => {
     if (!valor || valor <= 0) return setAlertMessage('Informe um valor válido.');
     if (actionType === 'RETIRADA' && valor > actionVault.valorAtual) return setAlertMessage('Retirada maior que valor disponível.');
     const next = { ...actionVault, valorAtual: actionType === 'DEPOSITO' ? actionVault.valorAtual + valor : actionVault.valorAtual - valor, updatedAt: new Date().toISOString() };
-    await storage.saveVault(next);
-    await storage.saveVaultMovement({ id: crypto.randomUUID(), cofreId: actionVault.id, tipo: actionType, valor, origem: 'AJUSTE_MANUAL', createdAt: new Date().toISOString() });
-    setActionVault(null);
-    load();
+    try {
+      await storage.saveVault(next);
+      await storage.saveVaultMovement({ id: crypto.randomUUID(), cofreId: actionVault.id, tipo: actionType, valor, origem: 'AJUSTE_MANUAL', createdAt: new Date().toISOString() });
+      setActionVault(null);
+      load();
+    } catch (error: any) {
+      console.error('Erro ao movimentar cofre:', error);
+      setAlertMessage(error?.message || 'Não foi possível atualizar o cofre. Verifique sua conexão e as regras do Firestore.');
+    }
   };
 
   return <div className="space-y-6">

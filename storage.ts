@@ -1,25 +1,31 @@
 
 import { Transaction, Ledger, AuthState, Subscription, SubscriptionMonthStatus, Vault, VaultMovement } from './types';
 import { db, auth, FIREBASE_READY } from './firebase';
-import { 
-  collection, 
-  doc, 
-  getDocs, 
-  setDoc, 
-  deleteDoc, 
-  query, 
+import {
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  deleteDoc,
+  query,
   orderBy,
   getDoc,
   addDoc,
   serverTimestamp,
   Timestamp,
-  updateDoc,
-  where
+  updateDoc
 } from 'firebase/firestore';
 
 // --- FLAG DE CONTROLE ---
 // Mude para TRUE apenas quando o Firebase estiver configurado no ambiente
 export const USE_FIREBASE = true;
+
+const toIsoDate = (value: Timestamp | string | undefined | null): string => {
+  if (!value) return new Date().toISOString();
+  if (typeof value === 'string') return value;
+  if (value instanceof Timestamp) return value.toDate().toISOString();
+  return new Date().toISOString();
+};
 
 const KEYS = {
   AUTH: 'foco_finance_auth',
@@ -196,27 +202,27 @@ export const storage = {
   getVaults: async (): Promise<Vault[]> => {
     if (USE_FIREBASE && auth.currentUser) {
       try {
-        const q = query(
-          collection(db, 'users', auth.currentUser.uid, 'cofres'),
-          where('ativo', '==', true),
-          orderBy('updatedAt', 'desc')
-        );
-        const snapshot = await getDocs(q);
-        const vaults = snapshot.docs.map((item) => {
-          const data = item.data() as Omit<Vault, 'id'> & { createdAt?: Timestamp | string; updatedAt?: Timestamp | string };
-          return {
-            ...data,
-            id: item.id,
-            createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt || new Date().toISOString(),
-            updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt || new Date().toISOString(),
-            ativo: data.ativo ?? true,
-          } as Vault;
-        });
+        const snapshot = await getDocs(collection(db, 'users', auth.currentUser.uid, 'cofres'));
+        const vaults = snapshot.docs
+          .map((item) => {
+            const data = item.data() as Omit<Vault, 'id'> & { createdAt?: Timestamp | string; updatedAt?: Timestamp | string };
+            return {
+              ...data,
+              id: item.id,
+              createdAt: toIsoDate(data.createdAt),
+              updatedAt: toIsoDate(data.updatedAt),
+              ativo: data.ativo ?? true,
+            } as Vault;
+          })
+          .filter((v) => v.ativo)
+          .sort((a, b) => (b.updatedAt > a.updatedAt ? 1 : -1));
         localStorage.setItem(KEYS.VAULTS, JSON.stringify(vaults));
         return vaults;
       } catch (e) {
-        console.warn('Firestore fail, using local cache', e);
+        console.error('Erro ao buscar cofres no Firestore:', e);
       }
+    } else if (USE_FIREBASE && !auth.currentUser) {
+      console.warn('Listagem de cofres usando cache local: usuário não autenticado no Firebase.');
     }
     const data = localStorage.getItem(KEYS.VAULTS);
     return data ? JSON.parse(data) : [];
@@ -236,17 +242,27 @@ export const storage = {
         updatedAt: serverTimestamp(),
       };
 
-      if (vault.id) {
-        await setDoc(doc(db, 'users', auth.currentUser.uid, 'cofres', vault.id), {
-          ...base,
-          createdAt: vault.createdAt ? new Date(vault.createdAt) : serverTimestamp(),
-        }, { merge: true });
-      } else {
-        await addDoc(collection(db, 'users', auth.currentUser.uid, 'cofres'), {
-          ...base,
-          createdAt: serverTimestamp(),
-        });
+      try {
+        if (vault.id) {
+          await setDoc(doc(db, 'users', auth.currentUser.uid, 'cofres', vault.id), {
+            ...base,
+            createdAt: vault.createdAt ? new Date(vault.createdAt) : serverTimestamp(),
+          }, { merge: true });
+          console.log('Cofre salvo no Firestore com ID:', vault.id);
+        } else {
+          const docRef = await addDoc(collection(db, 'users', auth.currentUser.uid, 'cofres'), {
+            ...base,
+            createdAt: serverTimestamp(),
+          });
+          vault.id = docRef.id;
+          console.log('Cofre criado no Firestore com ID:', docRef.id);
+        }
+      } catch (error) {
+        console.error('Erro ao salvar cofre no Firestore:', error);
+        throw error;
       }
+    } else if (USE_FIREBASE && !auth.currentUser) {
+      console.warn('Cofre salvo apenas no cache local: usuário não autenticado no Firebase.');
     }
     const vaults = await storage.getVaults();
     const index = vaults.findIndex(v => v.id === vault.id);
@@ -256,10 +272,16 @@ export const storage = {
   },
   deleteVault: async (id: string) => {
     if (USE_FIREBASE && auth.currentUser) {
-      await updateDoc(doc(db, 'users', auth.currentUser.uid, 'cofres', id), {
-        ativo: false,
-        updatedAt: serverTimestamp(),
-      });
+      try {
+        await updateDoc(doc(db, 'users', auth.currentUser.uid, 'cofres', id), {
+          ativo: false,
+          updatedAt: serverTimestamp(),
+        });
+        console.log('Cofre marcado como inativo no Firestore:', id);
+      } catch (error) {
+        console.error('Erro ao excluir cofre no Firestore:', error);
+        throw error;
+      }
     }
     const vaults = await storage.getVaults();
     localStorage.setItem(KEYS.VAULTS, JSON.stringify(vaults.filter((v) => v.id !== id)));
@@ -267,20 +289,21 @@ export const storage = {
   getVaultMovements: async (): Promise<VaultMovement[]> => {
     if (USE_FIREBASE && auth.currentUser) {
       try {
-        const q = query(collection(db, 'users', auth.currentUser.uid, 'cofre_movements'), orderBy('createdAt', 'desc'));
-        const snapshot = await getDocs(q);
-        const items = snapshot.docs.map((item) => {
-          const data = item.data() as Omit<VaultMovement, 'id' | 'createdAt'> & { createdAt?: Timestamp | string };
-          return {
-            ...data,
-            id: item.id,
-            createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt || new Date().toISOString(),
-          } as VaultMovement;
-        });
+        const snapshot = await getDocs(collection(db, 'users', auth.currentUser.uid, 'cofre_movements'));
+        const items = snapshot.docs
+          .map((item) => {
+            const data = item.data() as Omit<VaultMovement, 'id' | 'createdAt'> & { createdAt?: Timestamp | string };
+            return {
+              ...data,
+              id: item.id,
+              createdAt: toIsoDate(data.createdAt),
+            } as VaultMovement;
+          })
+          .sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1));
         localStorage.setItem(KEYS.VAULT_MOVEMENTS, JSON.stringify(items));
         return items;
       } catch (e) {
-        console.warn('Firestore fail, using local cache', e);
+        console.error('Erro ao buscar movimentos de cofre no Firestore:', e);
       }
     }
     const data = localStorage.getItem(KEYS.VAULT_MOVEMENTS);
@@ -288,14 +311,22 @@ export const storage = {
   },
   saveVaultMovement: async (movement: VaultMovement) => {
     if (USE_FIREBASE && auth.currentUser) {
-      await addDoc(collection(db, 'users', auth.currentUser.uid, 'cofre_movements'), {
-        cofreId: movement.cofreId,
-        tipo: movement.tipo,
-        valor: Number(movement.valor),
-        origem: movement.origem,
-        mesReferencia: movement.mesReferencia || null,
-        createdAt: serverTimestamp(),
-      });
+      try {
+        await setDoc(doc(db, 'users', auth.currentUser.uid, 'cofre_movements', movement.id), {
+          cofreId: movement.cofreId,
+          tipo: movement.tipo,
+          valor: Number(movement.valor),
+          origem: movement.origem,
+          mesReferencia: movement.mesReferencia || null,
+          createdAt: serverTimestamp(),
+        });
+        console.log('Movimento de cofre registrado no Firestore com ID:', movement.id);
+      } catch (error) {
+        console.error('Erro ao registrar movimento de cofre no Firestore:', error);
+        throw error;
+      }
+    } else if (USE_FIREBASE && !auth.currentUser) {
+      console.warn('Movimento de cofre salvo apenas no cache local: usuário não autenticado.');
     }
     const items = await storage.getVaultMovements();
     items.unshift(movement);
