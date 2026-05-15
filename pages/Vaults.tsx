@@ -13,8 +13,18 @@ const Vaults: React.FC = () => {
   const [nome, setNome] = useState('');
   const [meta, setMeta] = useState('');
   const [valorMov, setValorMov] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
-  const load = async () => setVaults(await storage.getVaults());
+  const load = async () => {
+    setIsLoading(true);
+    try {
+      setVaults(await storage.getVaults());
+    } catch {
+      setAlertMessage('Não foi possível carregar os cofres.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
   useEffect(() => { load(); }, []);
 
   const total = useMemo(() => vaults.reduce((acc, v) => acc + v.valorAtual, 0), [vaults]);
@@ -22,6 +32,7 @@ const Vaults: React.FC = () => {
   const createVault = async () => {
     if (!nome.trim()) return setAlertMessage('Informe o nome do cofre.');
     const metaValor = meta ? Number(meta) : undefined;
+    if (meta && Number.isNaN(metaValor)) return setAlertMessage('A meta deve ser numérica.');
     const now = new Date().toISOString();
     await storage.saveVault({ id: crypto.randomUUID(), nome: nome.trim(), valorAtual: 0, meta: metaValor && metaValor > 0 ? metaValor : undefined, createdAt: now, updatedAt: now, ativo: true });
     setShowCreate(false);
@@ -58,6 +69,7 @@ const Vaults: React.FC = () => {
       <PiggyBank className="text-indigo-500" size={36} />
     </div>
     <button onClick={() => setShowCreate(true)} className="px-4 py-3 rounded-xl bg-indigo-600 text-white font-black text-xs uppercase tracking-widest inline-flex items-center gap-2"><Plus size={16}/>Novo Cofre</button>
+    {isLoading && <p className="text-sm text-gray-500">Carregando cofres...</p>}
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
       {vaults.map(v => {
         const progress = v.meta ? Math.min(100, (v.valorAtual / v.meta) * 100) : null;

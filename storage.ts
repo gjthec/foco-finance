@@ -9,7 +9,12 @@ import {
   deleteDoc, 
   query, 
   orderBy,
-  getDoc
+  getDoc,
+  addDoc,
+  serverTimestamp,
+  Timestamp,
+  updateDoc,
+  where
 } from 'firebase/firestore';
 
 // --- FLAG DE CONTROLE ---
@@ -189,21 +194,109 @@ export const storage = {
 
   // --- COFRES ---
   getVaults: async (): Promise<Vault[]> => {
+    if (USE_FIREBASE && auth.currentUser) {
+      try {
+        const q = query(
+          collection(db, 'users', auth.currentUser.uid, 'cofres'),
+          where('ativo', '==', true),
+          orderBy('updatedAt', 'desc')
+        );
+        const snapshot = await getDocs(q);
+        const vaults = snapshot.docs.map((item) => {
+          const data = item.data() as Omit<Vault, 'id'> & { createdAt?: Timestamp | string; updatedAt?: Timestamp | string };
+          return {
+            ...data,
+            id: item.id,
+            createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt || new Date().toISOString(),
+            updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt || new Date().toISOString(),
+            ativo: data.ativo ?? true,
+          } as Vault;
+        });
+        localStorage.setItem(KEYS.VAULTS, JSON.stringify(vaults));
+        return vaults;
+      } catch (e) {
+        console.warn('Firestore fail, using local cache', e);
+      }
+    }
     const data = localStorage.getItem(KEYS.VAULTS);
     return data ? JSON.parse(data) : [];
   },
+  getVaultById: async (id: string): Promise<Vault | undefined> => {
+    const vaults = await storage.getVaults();
+    return vaults.find((v) => v.id === id);
+  },
   saveVault: async (vault: Vault) => {
+    if (USE_FIREBASE && auth.currentUser) {
+      const base = {
+        nome: vault.nome,
+        descricao: vault.descricao || null,
+        valorAtual: Number(vault.valorAtual) || 0,
+        meta: vault.meta ?? null,
+        ativo: vault.ativo ?? true,
+        updatedAt: serverTimestamp(),
+      };
+
+      if (vault.id) {
+        await setDoc(doc(db, 'users', auth.currentUser.uid, 'cofres', vault.id), {
+          ...base,
+          createdAt: vault.createdAt ? new Date(vault.createdAt) : serverTimestamp(),
+        }, { merge: true });
+      } else {
+        await addDoc(collection(db, 'users', auth.currentUser.uid, 'cofres'), {
+          ...base,
+          createdAt: serverTimestamp(),
+        });
+      }
+    }
     const vaults = await storage.getVaults();
     const index = vaults.findIndex(v => v.id === vault.id);
     if (index > -1) vaults[index] = vault;
     else vaults.unshift(vault);
     localStorage.setItem(KEYS.VAULTS, JSON.stringify(vaults));
   },
+  deleteVault: async (id: string) => {
+    if (USE_FIREBASE && auth.currentUser) {
+      await updateDoc(doc(db, 'users', auth.currentUser.uid, 'cofres', id), {
+        ativo: false,
+        updatedAt: serverTimestamp(),
+      });
+    }
+    const vaults = await storage.getVaults();
+    localStorage.setItem(KEYS.VAULTS, JSON.stringify(vaults.filter((v) => v.id !== id)));
+  },
   getVaultMovements: async (): Promise<VaultMovement[]> => {
+    if (USE_FIREBASE && auth.currentUser) {
+      try {
+        const q = query(collection(db, 'users', auth.currentUser.uid, 'cofre_movements'), orderBy('createdAt', 'desc'));
+        const snapshot = await getDocs(q);
+        const items = snapshot.docs.map((item) => {
+          const data = item.data() as Omit<VaultMovement, 'id' | 'createdAt'> & { createdAt?: Timestamp | string };
+          return {
+            ...data,
+            id: item.id,
+            createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt || new Date().toISOString(),
+          } as VaultMovement;
+        });
+        localStorage.setItem(KEYS.VAULT_MOVEMENTS, JSON.stringify(items));
+        return items;
+      } catch (e) {
+        console.warn('Firestore fail, using local cache', e);
+      }
+    }
     const data = localStorage.getItem(KEYS.VAULT_MOVEMENTS);
     return data ? JSON.parse(data) : [];
   },
   saveVaultMovement: async (movement: VaultMovement) => {
+    if (USE_FIREBASE && auth.currentUser) {
+      await addDoc(collection(db, 'users', auth.currentUser.uid, 'cofre_movements'), {
+        cofreId: movement.cofreId,
+        tipo: movement.tipo,
+        valor: Number(movement.valor),
+        origem: movement.origem,
+        mesReferencia: movement.mesReferencia || null,
+        createdAt: serverTimestamp(),
+      });
+    }
     const items = await storage.getVaultMovements();
     items.unshift(movement);
     localStorage.setItem(KEYS.VAULT_MOVEMENTS, JSON.stringify(items));
