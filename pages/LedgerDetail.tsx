@@ -123,7 +123,7 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
 
   const copyLink = () => {
     if (!ledger) return;
-    const url = `${window.location.origin}/#/public/${ledger.publicSlug}`;
+    const url = `${window.location.origin}/public/${ledger.publicSlug}`;
     navigator.clipboard.writeText(url);
     setCopyFeedback(true);
     setTimeout(() => setCopyFeedback(false), 2000);
