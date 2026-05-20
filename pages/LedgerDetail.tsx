@@ -1,10 +1,12 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Share2, Plus, Copy, CheckCircle2, Trash2, Clock, ShieldCheck, X, Calendar, ArrowUpRight, ArrowDownLeft, Loader2, Check, CheckCircle, Edit2, Wallet } from 'lucide-react';
 import { Ledger, LedgerEntry } from '../types';
 import { storage } from '../storage';
 import ConfirmDialog from '../components/ConfirmDialog';
+import MonthSelect from '../components/MonthSelect';
+import { formatBRL, formatMonthShort } from '../lib/format';
 
 const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) => {
   const { id, slug } = useParams();
@@ -32,6 +34,8 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
   const [batchDueDay, setBatchDueDay] = useState('');
   const [batchManualValues, setBatchManualValues] = useState<Record<string, string>>({});
   const [batchSelectedMonths, setBatchSelectedMonths] = useState<string[]>([]);
+
+  const entryFormRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -186,10 +190,7 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
     updateLedger({ ...ledger, entries: ledger.entries.filter(e => e.id !== entryId) });
   };
 
-  const formatBRL = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-  const formatMonthLabel = (monthValue: string) => {
-    return new Date(`${monthValue}-01T12:00:00`).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
-  };
+  const formatMonthLabel = formatMonthShort;
   const monthGrid = useMemo(() => {
     const [startYear, startMonthNumber] = batchStartMonth.split('-').map(Number);
     if (!startYear || !startMonthNumber) return [];
@@ -326,12 +327,11 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
         {/* ACTIONS BAR */}
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
           <div className="relative shrink-0">
-            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <input
-              type="month"
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+            <MonthSelect
               value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="pl-9 pr-3 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-black dark:text-white"
+              onChange={setSelectedMonth}
+              className="pl-9 pr-8 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-black dark:text-white appearance-none"
             />
           </div>
           {!isPublic && (
@@ -524,7 +524,7 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
               <h2 className="text-xl font-black dark:text-white tracking-tight">{editingEntry ? 'Editar Gasto' : 'Dividir Gasto'}</h2>
               <button onClick={() => { setShowAddModal(false); setEditingEntry(null); }} className="p-2.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors"><X size={24} /></button>
             </div>
-            <form onSubmit={addOrUpdateEntry} className="p-6 space-y-6 overflow-y-auto">
+            <form ref={entryFormRef} onSubmit={addOrUpdateEntry} className="p-6 space-y-6 overflow-y-auto">
               <div>
                 <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Descrição</label>
                 <input required name="description" defaultValue={editingEntry?.description || ''} placeholder="O que foi pago?" className="w-full px-4 py-4 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-base outline-none focus:ring-2 focus:ring-indigo-500 font-bold" />
@@ -554,13 +554,14 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
               </div>
             </form>
             <div className="p-6 border-t border-gray-100 dark:border-slate-800 shrink-0 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
-              <button 
-                type="submit"
+              <button
+                type="button"
                 disabled={isSaving}
-                onClick={(e) => {
-                  const form = (e.currentTarget.parentElement?.previousElementSibling as HTMLFormElement);
-                  if(form.reportValidity()) form.requestSubmit();
-                }} 
+                onClick={() => {
+                  const form = entryFormRef.current;
+                  if (!form) return;
+                  if (form.reportValidity()) form.requestSubmit();
+                }}
                 className="w-full py-5 bg-indigo-600 text-white font-black uppercase text-xs tracking-[0.2em] rounded-[20px] shadow-xl hover:bg-indigo-700 transition-all active:scale-[0.97] flex items-center justify-center gap-2"
               >
                 {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Check size={20} strokeWidth={3} />}
@@ -592,7 +593,7 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
               <div className="grid md:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Mês inicial</label>
-                  <input type="month" value={batchStartMonth} onChange={(e) => setBatchStartMonth(e.target.value)} className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold" />
+                  <MonthSelect value={batchStartMonth} onChange={setBatchStartMonth} className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold appearance-none" />
                 </div>
                 <div>
                   <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Quantidade</label>

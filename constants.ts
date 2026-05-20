@@ -1,5 +1,5 @@
 
-export const TRANSACTION_CATEGORIES = [
+export const DEFAULT_CATEGORIES = [
   'Alimentação',
   'Transporte',
   'Lazer',
@@ -8,8 +8,14 @@ export const TRANSACTION_CATEGORIES = [
   'Moradia',
   'Salário',
   'Salário PJ',
+  'Dívidas',
+  'Créditos',
   'Outros'
 ];
+
+// Mantido por compatibilidade com imports legados. Use `DEFAULT_CATEGORIES`
+// como base e mescle com as categorias customizadas vindas do storage.
+export const TRANSACTION_CATEGORIES = DEFAULT_CATEGORIES;
 
 export const MOCK_TRANSACTIONS = [
   {

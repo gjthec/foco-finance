@@ -5,6 +5,7 @@ import { Plus, Users, ArrowRight, Share2, X, UserPlus, Loader2, Check } from 'lu
 import { Ledger } from '../types';
 import { storage } from '../storage';
 import AlertModal from '../components/AlertModal';
+import { formatBRL } from '../lib/format';
 
 const LedgerList: React.FC = () => {
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
@@ -64,7 +65,6 @@ const LedgerList: React.FC = () => {
     }, 0);
   };
 
-  const formatBRL = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700">

@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, Loader2, Check, CheckCircle } from 'lucide-react';
 import { Subscription, TransactionType } from '../types';
 import AlertModal from './AlertModal';
-import { TRANSACTION_CATEGORIES } from '../constants';
+import CategoryPicker from './CategoryPicker';
+import { storage } from '../storage';
 
 interface SubscriptionModalProps {
   isOpen: boolean;
@@ -31,13 +32,19 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
   const [description, setDescription] = useState('');
   const [isActive, setIsActive] = useState(true);
 
+  const [categories, setCategories] = useState<string[]>([]);
+
   const [isSaving, setIsSaving] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
 
+  const formRef = useRef<HTMLFormElement>(null);
+
   useEffect(() => {
     if (!isOpen) return;
     document.body.style.overflow = 'hidden';
+
+    storage.getAllCategoryNames().then(setCategories);
 
     if (initialData) {
       setTitle(initialData.title);
@@ -108,8 +115,9 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
       await onSave(subscription);
       setIsSuccess(true);
       setTimeout(() => onClose(), 700);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      setAlertMessage(error?.message || 'Não foi possível salvar a assinatura. Verifique sua conexão e tente novamente.');
       setIsSaving(false);
     }
   };
@@ -137,7 +145,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
           </button>
         </div>
 
-        <form id="subscription-form" onSubmit={handleSave} className="p-5 md:p-6 space-y-5 overflow-y-auto">
+        <form ref={formRef} onSubmit={handleSave} className="p-5 md:p-6 space-y-5 overflow-y-auto">
           <div className="grid grid-cols-2 gap-2 p-1.5 bg-gray-100 dark:bg-slate-800 rounded-2xl">
             <button type="button" onClick={() => setType('EXPENSE')} className={`py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${type === 'EXPENSE' ? 'bg-white dark:bg-slate-700 text-rose-600 shadow-sm' : 'text-gray-500'}`}>
               Saída
@@ -196,9 +204,14 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Categoria</label>
-              <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 appearance-none">
-                {TRANSACTION_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-              </select>
+              <CategoryPicker
+                value={category}
+                onChange={setCategory}
+                options={categories}
+                onCategoriesChanged={setCategories}
+                selectClassName="flex-1 min-w-0 px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 appearance-none"
+                onError={setAlertMessage}
+              />
             </div>
             <div>
               <label className="block text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Status</label>
@@ -216,7 +229,16 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
         </form>
 
         <div className="p-5 md:p-6 border-t border-gray-100 dark:border-slate-800 shrink-0 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
-          <button type="submit" form="subscription-form" disabled={isSaving || isSuccess} className="w-full py-5 font-black uppercase text-xs tracking-[0.2em] rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-[0.97] bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-70">
+          <button
+            type="button"
+            onClick={() => {
+              const form = formRef.current;
+              if (!form) return;
+              if (form.reportValidity()) form.requestSubmit();
+            }}
+            disabled={isSaving || isSuccess}
+            className="w-full py-5 font-black uppercase text-xs tracking-[0.2em] rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-[0.97] bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-70"
+          >
             {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check size={20} strokeWidth={3} />}
             {isSaving ? 'Sincronizando...' : initialData ? 'Atualizar Assinatura' : 'Salvar Assinatura'}
           </button>

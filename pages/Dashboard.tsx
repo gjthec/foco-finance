@@ -1,12 +1,14 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, ArrowUpCircle, ArrowDownCircle, Landmark, Calendar, Edit2, Trash2, FileText, ExternalLink, Loader2, Filter, CheckCircle } from 'lucide-react';
-import { Subscription, Transaction, TransactionType, Ledger, SubscriptionMonthStatus, Vault } from '../types';
+import { Plus, Search, ArrowUpCircle, ArrowDownCircle, Landmark, Calendar, Edit2, Trash2, FileText, ExternalLink, Loader2, Filter, CheckCircle, PiggyBank } from 'lucide-react';
+import { Subscription, Transaction, TransactionType, Ledger, SubscriptionMonthStatus, Vault, VaultMovement } from '../types';
 import { storage } from '../storage';
-import { TRANSACTION_CATEGORIES } from '../constants';
 import TransactionModal from '../components/TransactionModal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import MonthSelect from '../components/MonthSelect';
 import { useNavigate } from 'react-router-dom';
+import { formatBRL } from '../lib/format';
+import { generateRecurringSubscriptionItems, synthesizeLedgerRows, synthesizeVaultMovementItems } from '../lib/dashboardSynthesis';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -15,11 +17,13 @@ const Dashboard: React.FC = () => {
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const [subscriptionMonthStatuses, setSubscriptionMonthStatuses] = useState<SubscriptionMonthStatus[]>([]);
   const [vaults, setVaults] = useState<Vault[]>([]);
+  const [vaultMovements, setVaultMovements] = useState<VaultMovement[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | undefined>();
   const [isLoading, setIsLoading] = useState(true);
   
-  const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: string | null }>({ isOpen: false, id: null });
+  const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: string | null; kind: 'tx' | 'vaultMovement' }>({ isOpen: false, id: null, kind: 'tx' });
   
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [searchTerm, setSearchTerm] = useState('');
@@ -30,18 +34,22 @@ const Dashboard: React.FC = () => {
   const loadData = async () => {
     if (transactions.length === 0) setIsLoading(true);
     try {
-      const [txs, ldgs, subs, subStatuses, vts] = await Promise.all([
+      const [txs, ldgs, subs, subStatuses, vts, movs] = await Promise.all([
         storage.getTransactions(),
         storage.getLedgers(),
         storage.getSubscriptions(),
         storage.getSubscriptionMonthStatuses(),
-        storage.getVaults()
+        storage.getVaults(),
+        storage.getVaultMovements()
       ]);
       setTransactions(txs);
       setLedgers(ldgs);
       setSubscriptions(subs);
       setSubscriptionMonthStatuses(subStatuses);
       setVaults(vts);
+      setVaultMovements(movs);
+      const cats = await storage.getAllCategoryNames();
+      setCategoryOptions(cats);
     } catch (e) {
       console.error("Erro ao carregar dados", e);
     } finally {
@@ -55,6 +63,13 @@ const Dashboard: React.FC = () => {
 
   const saveTx = async (newTx: Transaction) => {
     try {
+      // Se já existia uma versão anterior dessa transação, reverte o cofre dela
+      // antes de aplicar a nova — evita saldo duplicado em edições.
+      const previous = transactions.find((t) => t.id === newTx.id);
+      if (previous && previous.type === 'RESERVE') {
+        try { await storage.deleteVaultMovement(previous.id); } catch (e) { console.warn('Falha ao reverter cofre anterior', e); }
+      }
+
       setTransactions(prev => {
         const index = prev.findIndex(t => t.id === newTx.id);
         if (index > -1) {
@@ -69,7 +84,9 @@ const Dashboard: React.FC = () => {
         const target = (await storage.getVaults()).find(v => v.id === newTx.vaultId);
         if (target) {
           await storage.saveVault({ ...target, valorAtual: target.valorAtual + newTx.value, updatedAt: new Date().toISOString() });
-          await storage.saveVaultMovement({ id: crypto.randomUUID(), cofreId: target.id, tipo: 'DEPOSITO', valor: newTx.value, origem: 'LANCAMENTO_MENSAL', mesReferencia: newTx.date.slice(0,7), createdAt: new Date().toISOString() });
+          // Movimento de cofre compartilha o mesmo ID da transação. Assim, ao
+          // excluir/editar a transação, conseguimos achar e reverter o movimento.
+          await storage.saveVaultMovement({ id: newTx.id, cofreId: target.id, tipo: 'DEPOSITO', valor: newTx.value, origem: 'LANCAMENTO_MENSAL', mesReferencia: newTx.date.slice(0,7), createdAt: new Date().toISOString() });
         }
       }
       loadData();
@@ -78,45 +95,43 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const getMonthDate = (month: string) => {
-    const [y, m] = month.split('-').map(Number);
-    return new Date(y, m - 1, 1);
-  };
-
-  const generateRecurringItems = useMemo(() => {
-    const targetMonthDate = getMonthDate(selectedMonth);
-    return subscriptions.flatMap((subscription) => {
-      if (!subscription.isActive) return [];
-      const startMonth = subscription.startDate.slice(0, 7);
-      const endMonth = subscription.endDate?.slice(0, 7);
-      const hasIndefiniteEndDate = subscription.hasIndefiniteEndDate ?? !subscription.endDate;
-      if (selectedMonth < startMonth) return [];
-      if (!hasIndefiniteEndDate && endMonth && selectedMonth > endMonth) return [];
-
-      const daysInMonth = new Date(targetMonthDate.getFullYear(), targetMonthDate.getMonth() + 1, 0).getDate();
-      const day = Math.min(subscription.dueDay, daysInMonth);
-      const competenceDate = `${selectedMonth}-${String(day).padStart(2, '0')}`;
-      return [{
-        id: `sub-${subscription.id}-${selectedMonth}`,
-        date: competenceDate,
-        type: subscription.type,
-        value: subscription.amount,
-        category: subscription.category || 'Assinatura',
-        note: subscription.title,
-        isRecurring: true,
-        subscriptionId: subscription.id
-      }];
-    });
-  }, [subscriptions, selectedMonth]);
+  const generateRecurringItems = useMemo(
+    () => generateRecurringSubscriptionItems(subscriptions, selectedMonth),
+    [subscriptions, selectedMonth],
+  );
 
   const executeDelete = async () => {
     const id = confirmDelete.id;
+    const kind = confirmDelete.kind;
     if (!id) return;
+
+    if (kind === 'vaultMovement') {
+      try {
+        await storage.deleteVaultMovement(id);
+        await loadData();
+      } catch (e) {
+        console.error('Erro ao excluir movimento de cofre', e);
+      }
+      return;
+    }
+
+    // Se a transação a ser excluída é RESERVE, reverte primeiro o cofre.
+    // O movimento compartilha o ID da transação; se for legado (UUID
+    // aleatório), deleteVaultMovement vira no-op silenciosamente.
+    const txToDelete = transactions.find((t) => t.id === id);
+    if (txToDelete?.type === 'RESERVE') {
+      try {
+        await storage.deleteVaultMovement(id);
+      } catch (e) {
+        console.warn('Falha ao reverter cofre na exclusão', e);
+      }
+    }
 
     const oldTransactions = [...transactions];
     setTransactions(prev => prev.filter(tx => tx.id !== id));
     try {
       await storage.deleteTransaction(id);
+      await loadData();
     } catch (e) {
       setTransactions(oldTransactions);
     }
@@ -191,42 +206,19 @@ const Dashboard: React.FC = () => {
     await storage.saveSubscriptionMonthStatus(nextStatus);
   };
 
-  const ledgerTransactions = useMemo(() => {
-    return ledgers.map(l => {
-      const monthlyEntries = l.entries.filter(e => e.date.startsWith(selectedMonth));
-      if (monthlyEntries.length === 0) return null;
+  const ledgerTransactions = useMemo(
+    () => synthesizeLedgerRows(ledgers, selectedMonth),
+    [ledgers, selectedMonth],
+  );
 
-      // CORREÇÃO: Removida a divisão por 2 para refletir o valor real lançado
-      const balance = monthlyEntries.reduce((acc, entry) => {
-        if (entry.status === 'paid') return acc;
-        return entry.paidBy === 'me' ? acc + entry.amount : acc - entry.amount;
-      }, 0);
-
-      // Valor total movimentado no mês (independente de estar pago ou não) para o controle de fluxo
-      const volumeTotal = monthlyEntries.reduce((acc, entry) => {
-        return entry.paidBy === 'me' ? acc + entry.amount : acc - entry.amount;
-      }, 0);
-
-      const isFullyPaid = monthlyEntries.length > 0 && monthlyEntries.every(e => e.status === 'paid');
-
-      return {
-        id: `ledger-ref-${l.id}-${selectedMonth}`,
-        date: 'Fluxo Mensal',
-        type: (volumeTotal >= 0 ? 'INCOME' : 'EXPENSE') as TransactionType,
-        value: Math.abs(volumeTotal),
-        category: 'Dívida Compartilhada',
-        note: `Acerto com ${l.friendName}`,
-        isLedgerSummary: true,
-        ledgerId: l.id,
-        isPaid: isFullyPaid,
-        currentBalance: balance // Saldo pendente real
-      };
-    }).filter(Boolean) as any[];
-  }, [ledgers, selectedMonth]);
+  const vaultMovementItems = useMemo(
+    () => synthesizeVaultMovementItems(vaultMovements, vaults, selectedMonth),
+    [vaultMovements, vaults, selectedMonth],
+  );
 
   const filteredTransactions = useMemo(() => {
     const realFiltered = transactions.filter(tx => tx.date.startsWith(selectedMonth));
-    const combined = [...ledgerTransactions, ...generateRecurringItems, ...realFiltered].filter(tx => {
+    const combined = [...ledgerTransactions, ...generateRecurringItems, ...vaultMovementItems, ...realFiltered].filter(tx => {
       const matchesSearch = tx.note?.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           tx.category.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesType = typeFilter === 'ALL' || tx.type === typeFilter;
@@ -238,7 +230,7 @@ const Dashboard: React.FC = () => {
       if (b.date === 'Fluxo Mensal') return 1;
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
-  }, [transactions, ledgerTransactions, generateRecurringItems, selectedMonth, searchTerm, typeFilter, categoryFilter]);
+  }, [transactions, ledgerTransactions, generateRecurringItems, vaultMovementItems, selectedMonth, searchTerm, typeFilter, categoryFilter]);
 
   const stats = useMemo(() => {
     return filteredTransactions.reduce((acc, tx) => {
@@ -252,7 +244,6 @@ const Dashboard: React.FC = () => {
     }, { income: 0, expense: 0, reserve: 0, balance: 0, freeBalance: 0, reservedAssets: 0 });
   }, [filteredTransactions, vaults]);
 
-  const formatBRL = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
   return (
     <div className="space-y-6 pb-12">
@@ -267,12 +258,11 @@ const Dashboard: React.FC = () => {
         
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
           <div className="relative shrink-0">
-            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <input
-              type="month"
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+            <MonthSelect
               value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="pl-9 pr-3 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-black dark:text-white"
+              onChange={setSelectedMonth}
+              className="pl-9 pr-8 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-black dark:text-white appearance-none"
             />
           </div>
           <button
@@ -319,7 +309,7 @@ const Dashboard: React.FC = () => {
                 className="w-full px-3 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl outline-none text-[10px] font-black uppercase tracking-widest appearance-none"
               >
                 <option value="ALL">Categorias</option>
-                {TRANSACTION_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                {categoryOptions.map(cat => <option key={cat} value={cat}>{cat}</option>)}
               </select>
             </div>
           </div>
@@ -354,6 +344,8 @@ const Dashboard: React.FC = () => {
         ) : (
           filteredTransactions.map(tx => {
             const isLedger = 'isLedgerSummary' in tx;
+            const isVaultMov = 'isVaultMovement' in tx;
+            const isCofreItem = isVaultMov || tx.type === 'RESERVE';
             const isRecurring = isRecurringExpense(tx);
             const isPaid = isItemPaid(tx, getSelectedMonthKey(selectedMonth));
             
@@ -362,7 +354,9 @@ const Dashboard: React.FC = () => {
                 key={tx.id} 
                 className={`group bg-white dark:bg-slate-900 p-4.5 rounded-[24px] border transition-all flex items-center gap-4 active:scale-[0.98] ${
                   isPaid ? 'opacity-40 grayscale border-gray-50 dark:border-slate-800' :
-                  isLedger ? 'border-indigo-400 dark:border-indigo-600 bg-indigo-50/10 dark:bg-indigo-900/10' : 'border-gray-100 dark:border-slate-800 shadow-sm'
+                  isLedger ? 'border-indigo-400 dark:border-indigo-600 bg-indigo-50/10 dark:bg-indigo-900/10' :
+                  isCofreItem ? 'border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/30 dark:bg-indigo-900/10' :
+                  'border-gray-100 dark:border-slate-800 shadow-sm'
                 }`}
               >
                 <button
@@ -381,10 +375,11 @@ const Dashboard: React.FC = () => {
                     isExpenseItem(tx) ? 'cursor-pointer hover:scale-105' : 'cursor-default'
                   } ${
                     isPaid ? 'bg-gray-100 dark:bg-slate-800 text-gray-500' :
+                    isCofreItem ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600' :
                     tx.type === 'INCOME' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600' : 'bg-rose-50 dark:bg-rose-900/20 text-rose-600'
                   }`}
                 >
-                  {isPaid ? <CheckCircle size={28} strokeWidth={2.5} /> : (tx.type === 'INCOME' ? <ArrowUpCircle size={28} strokeWidth={2.5} /> : <ArrowDownCircle size={28} strokeWidth={2.5} />)}
+                  {isPaid ? <CheckCircle size={28} strokeWidth={2.5} /> : isCofreItem ? <PiggyBank size={28} strokeWidth={2.5} /> : (tx.type === 'INCOME' ? <ArrowUpCircle size={28} strokeWidth={2.5} /> : <ArrowDownCircle size={28} strokeWidth={2.5} />)}
                 </button>
 
                 <div className="flex-1 min-w-0">
@@ -393,7 +388,8 @@ const Dashboard: React.FC = () => {
                       {tx.note || tx.category}
                     </h4>
                     <span className={`text-base font-black whitespace-nowrap tracking-tight ${
-                      isPaid ? 'text-gray-400' : 
+                      isPaid ? 'text-gray-400' :
+                      isCofreItem ? 'text-indigo-600 dark:text-indigo-400' :
                       tx.type === 'INCOME' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                     }`}>
                       {formatBRL(tx.value)}
@@ -426,7 +422,7 @@ const Dashboard: React.FC = () => {
 
                 <div className="flex gap-2 shrink-0">
                   {isLedger ? (
-                    <button 
+                    <button
                       onClick={() => navigate(`/ledger/${(tx as any).ledgerId}`)}
                       className={`p-3 rounded-2xl transition-colors ${
                         isPaid ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' : 'text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/30'
@@ -434,6 +430,23 @@ const Dashboard: React.FC = () => {
                     >
                       <ExternalLink size={20} />
                     </button>
+                  ) : isVaultMov ? (
+                    <>
+                      <button
+                        onClick={() => navigate('/vaults')}
+                        title="Gerenciar no Cofres"
+                        className="p-3 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-600 hover:text-white rounded-xl transition-colors"
+                      >
+                        <ExternalLink size={20} />
+                      </button>
+                      <button
+                        onClick={() => setConfirmDelete({ isOpen: true, id: (tx as any).vaultMovementId, kind: 'vaultMovement' })}
+                        title="Remover movimento"
+                        className="p-3 text-gray-400 hover:text-rose-600 active:bg-rose-50 rounded-xl transition-colors"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    </>
                   ) : (
                     <>
                       {!isRecurring && (
@@ -441,7 +454,7 @@ const Dashboard: React.FC = () => {
                           <button onClick={() => { setEditingTx(tx); setIsModalOpen(true); }} className="p-3 text-gray-400 hover:text-indigo-600 active:bg-gray-100 dark:active:bg-slate-800 rounded-xl transition-colors">
                             <Edit2 size={20} />
                           </button>
-                          <button onClick={() => setConfirmDelete({ isOpen: true, id: tx.id })} className="p-3 text-gray-400 hover:text-rose-600 active:bg-rose-50 rounded-xl transition-colors">
+                          <button onClick={() => setConfirmDelete({ isOpen: true, id: tx.id, kind: 'tx' })} className="p-3 text-gray-400 hover:text-rose-600 active:bg-rose-50 rounded-xl transition-colors">
                             <Trash2 size={20} />
                           </button>
                         </>
@@ -455,14 +468,16 @@ const Dashboard: React.FC = () => {
         )}
       </div>
 
-      <TransactionModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingTx(undefined); }} onSave={saveTx} initialData={editingTx} existingTransactions={transactions} />
+      <TransactionModal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setEditingTx(undefined); }} onSave={saveTx} initialData={editingTx} existingTransactions={transactions} defaultMonth={selectedMonth} />
       
-      <ConfirmDialog 
+      <ConfirmDialog
         isOpen={confirmDelete.isOpen}
-        onClose={() => setConfirmDelete({ isOpen: false, id: null })}
+        onClose={() => setConfirmDelete({ isOpen: false, id: null, kind: 'tx' })}
         onConfirm={executeDelete}
-        title="Excluir Registro"
-        message="Tem certeza que deseja remover este lançamento? Esta ação não pode ser desfeita."
+        title={confirmDelete.kind === 'vaultMovement' ? 'Remover movimento de cofre' : 'Excluir Registro'}
+        message={confirmDelete.kind === 'vaultMovement'
+          ? 'Remover este movimento? O saldo do cofre será revertido automaticamente.'
+          : 'Tem certeza que deseja remover este lançamento? Esta ação não pode ser desfeita.'}
         confirmLabel="Sim, Excluir"
       />
     </div>

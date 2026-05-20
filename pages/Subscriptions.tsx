@@ -3,6 +3,7 @@ import { Plus, Edit2, Power, FileText } from 'lucide-react';
 import { Subscription } from '../types';
 import { storage } from '../storage';
 import SubscriptionModal from '../components/SubscriptionModal';
+import { formatBRL } from '../lib/format';
 
 const Subscriptions: React.FC = () => {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -35,7 +36,6 @@ const Subscriptions: React.FC = () => {
     await loadSubscriptions();
   };
 
-  const formatBRL = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 
   return (
     <div className="space-y-6 pb-12">

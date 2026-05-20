@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { LayoutDashboard, Users, LogOut, Wallet, Sun, Moon, User, X, ArrowLeft, Menu as MenuIcon, Repeat, PiggyBank } from 'lucide-react';
+import { LayoutDashboard, Users, LogOut, Wallet, Sun, Moon, User, X, ArrowLeft, Menu as MenuIcon, Repeat, PiggyBank, ChevronRight, Tag, BarChart3 } from 'lucide-react';
 import { auth } from '../firebase';
 import { storage } from '../storage';
 import ConfirmDialog from './ConfirmDialog';
@@ -28,6 +28,8 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleTheme, theme }) => {
     if (location.pathname === '/ledger') return { title: 'Dívidas', showBack: false };
     if (location.pathname === '/subscriptions') return { title: 'Assinaturas', showBack: false };
     if (location.pathname === '/vaults') return { title: 'Cofres', showBack: false };
+    if (location.pathname === '/categories') return { title: 'Categorias', showBack: true, backTo: '/dashboard' };
+    if (location.pathname === '/reports') return { title: 'Relatórios', showBack: true, backTo: '/dashboard' };
     return { title: 'Foco', showBack: false };
   };
 
@@ -54,6 +56,8 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleTheme, theme }) => {
     { label: 'Dívidas', icon: Users, path: '/ledger' },
     { label: 'Assinaturas', icon: Repeat, path: '/subscriptions' },
     { label: 'Cofres', icon: PiggyBank, path: '/vaults' },
+    { label: 'Relatórios', icon: BarChart3, path: '/reports' },
+    { label: 'Categorias', icon: Tag, path: '/categories' },
   ];
 
   if (isPublic) {
@@ -248,7 +252,35 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleTheme, theme }) => {
             </div>
 
             <div className="space-y-3">
-              <button 
+              <Link
+                to="/reports"
+                onClick={() => setIsMenuOpen(false)}
+                className="w-full flex items-center justify-between p-5 bg-gray-50 dark:bg-slate-800/50 rounded-3xl border border-transparent active:border-indigo-500 transition-all"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-2.5 bg-white dark:bg-slate-800 rounded-xl shadow-sm text-indigo-600">
+                    <BarChart3 size={20} />
+                  </div>
+                  <span className="font-black uppercase text-xs tracking-widest dark:text-white">Relatórios</span>
+                </div>
+                <ChevronRight size={18} className="text-gray-300" />
+              </Link>
+
+              <Link
+                to="/categories"
+                onClick={() => setIsMenuOpen(false)}
+                className="w-full flex items-center justify-between p-5 bg-gray-50 dark:bg-slate-800/50 rounded-3xl border border-transparent active:border-indigo-500 transition-all"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-2.5 bg-white dark:bg-slate-800 rounded-xl shadow-sm text-indigo-600">
+                    <Tag size={20} />
+                  </div>
+                  <span className="font-black uppercase text-xs tracking-widest dark:text-white">Categorias</span>
+                </div>
+                <ChevronRight size={18} className="text-gray-300" />
+              </Link>
+
+              <button
                 onClick={toggleTheme}
                 className="w-full flex items-center justify-between p-5 bg-gray-50 dark:bg-slate-800/50 rounded-3xl border border-transparent active:border-indigo-500 transition-all"
               >

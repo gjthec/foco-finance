@@ -95,6 +95,12 @@ export interface AuthState {
   lastLogin?: number;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
 export interface PjCalculation {
   currentGross: number;
   previousGross: number;
