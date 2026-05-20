@@ -2,8 +2,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-// Expõe window.__migrateFocoFinance no console (uso único para migração de dados).
-import './migration';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
