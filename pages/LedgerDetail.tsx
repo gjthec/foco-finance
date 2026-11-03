@@ -93,9 +93,20 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
     return monthlyEntries.reduce((acc, entry) => {
       if (entry.paidBy === 'me') acc.mePaid += entry.amount;
       else acc.friendPaid += entry.amount;
+      if (entry.status === 'open') {
+        if (entry.paidBy === 'me') acc.meOpen += entry.amount;
+        else acc.friendOpen += entry.amount;
+      }
       return acc;
-    }, { mePaid: 0, friendPaid: 0 });
+    }, { mePaid: 0, friendPaid: 0, meOpen: 0, friendOpen: 0 });
   }, [monthlyEntries]);
+
+  // Acerto do mês: diferença entre o que cada um pagou (só lançamentos em aberto).
+  // > 0 → o amigo te deve; < 0 → você deve ao amigo.
+  const monthlySettlement = useMemo(() => {
+    const net = Math.round((monthlyStats.meOpen - monthlyStats.friendOpen) * 100) / 100;
+    return { net, hasOpen: monthlyStats.meOpen + monthlyStats.friendOpen > 0 };
+  }, [monthlyStats]);
 
   const updateLedger = async (updated: Ledger) => {
     if (isPublic) return;
@@ -422,6 +433,50 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
           <Wallet className={`absolute -right-2 -bottom-2 w-12 h-12 opacity-10 group-hover:scale-110 transition-transform ${totalBalanceOpen === 0 ? 'text-white' : 'text-current'}`} />
         </div>
       </div>
+
+      {/* ACERTO DO MÊS */}
+      {monthlyEntries.length > 0 && (() => {
+        const friendFirst = ledger.friendName.split(' ')[0];
+        const { net, hasOpen } = monthlySettlement;
+        const settled = !hasOpen || net === 0;
+        const tone = settled
+          ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400'
+          : net > 0
+            ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400'
+            : 'bg-rose-50 dark:bg-rose-900/20 border-rose-100 dark:border-rose-800/50 text-rose-700 dark:text-rose-400';
+        const headline = !hasOpen
+          ? `${currentMonthName} já liquidado`
+          : net === 0
+            ? 'Empate — ninguém deve nada'
+            : net > 0
+              ? `${friendFirst} te paga`
+              : `Você paga a ${friendFirst}`;
+        return (
+          <div className={`p-4 rounded-[24px] border shadow-sm ${tone}`}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-[0.15em] text-gray-500 dark:text-slate-400 mb-1">Acerto do mês ({currentMonthName})</p>
+                <p className="text-sm font-black truncate">{headline}</p>
+              </div>
+              {hasOpen && net !== 0 && (
+                <p className="text-2xl font-black tracking-tighter whitespace-nowrap">{formatBRL(Math.abs(net))}</p>
+              )}
+            </div>
+            {hasOpen && (
+              <div className="mt-3 pt-3 border-t border-current/10 text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span>Você: <span className="text-indigo-600 dark:text-indigo-400">{formatBRL(monthlyStats.meOpen)}</span></span>
+                <span>−</span>
+                <span>{friendFirst}: <span className="text-amber-600 dark:text-amber-400">{formatBRL(monthlyStats.friendOpen)}</span></span>
+                <span>=</span>
+                <span className="text-current">{formatBRL(Math.abs(net))}</span>
+                {(monthlyStats.meOpen !== monthlyStats.mePaid || monthlyStats.friendOpen !== monthlyStats.friendPaid) && (
+                  <span className="normal-case tracking-normal font-bold italic">(só lançamentos em aberto)</span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ENTRIES LIST */}
       <div className="space-y-3">
