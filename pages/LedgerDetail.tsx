@@ -1,12 +1,15 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Share2, Plus, Copy, CheckCircle2, Trash2, Clock, ShieldCheck, X, Calendar, ArrowUpRight, ArrowDownLeft, Loader2, Check, CheckCircle, Edit2, Wallet } from 'lucide-react';
+import { ArrowLeft, Share2, Plus, Copy, CheckCircle2, Trash2, Clock, ShieldCheck, X, Calendar, ArrowUpRight, ArrowDownLeft, Loader2, Check, CheckCircle, Edit2, Wallet, TrendingUp, LayoutList } from 'lucide-react';
 import { Ledger, LedgerEntry } from '../types';
 import { storage } from '../storage';
 import ConfirmDialog from '../components/ConfirmDialog';
 import MonthSelect from '../components/MonthSelect';
 import { formatBRL, formatMonthShort } from '../lib/format';
+import { progressiveValue } from '../lib/ledgerMath';
+import LedgerOverview from '../components/LedgerOverview';
+import ProgressiveAdjustModal from '../components/ProgressiveAdjustModal';
 
 const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) => {
   const { id, slug } = useParams();
@@ -14,6 +17,8 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
   const [ledger, setLedger] = useState<Ledger | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [viewMode, setViewMode] = useState<'month' | 'overview'>('month');
   const [editingEntry, setEditingEntry] = useState<LedgerEntry | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
@@ -30,7 +35,8 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
   const [batchStartMonth, setBatchStartMonth] = useState(new Date().toISOString().slice(0, 7));
   const [batchMonthCount, setBatchMonthCount] = useState(3);
   const [batchSelectionMode, setBatchSelectionMode] = useState<'auto' | 'manual'>('auto');
-  const [batchGenerationMode, setBatchGenerationMode] = useState<'fixed' | 'installment' | 'manual'>('fixed');
+  const [batchGenerationMode, setBatchGenerationMode] = useState<'fixed' | 'progressive' | 'installment' | 'manual'>('fixed');
+  const [batchIncrement, setBatchIncrement] = useState('10');
   const [batchDueDay, setBatchDueDay] = useState('');
   const [batchManualValues, setBatchManualValues] = useState<Record<string, string>>({});
   const [batchSelectedMonths, setBatchSelectedMonths] = useState<string[]>([]);
@@ -51,10 +57,10 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
   }, [id, slug, isPublic]);
 
   useEffect(() => {
-    if (showAddModal || showBatchModal) document.body.style.overflow = 'hidden';
+    if (showAddModal || showBatchModal || showAdjustModal) document.body.style.overflow = 'hidden';
     else document.body.style.overflow = 'unset';
     return () => { document.body.style.overflow = 'unset'; };
-  }, [showAddModal, showBatchModal]);
+  }, [showAddModal, showBatchModal, showAdjustModal]);
 
   useEffect(() => {
     setBatchStartMonth(selectedMonth);
@@ -225,6 +231,10 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
         return { month, value: cents / 100 };
       });
     }
+    if (batchGenerationMode === 'progressive') {
+      const inc = parseFloat(batchIncrement) || 0;
+      return sortedBatchMonths.map((month, index) => ({ month, value: progressiveValue(parsedBatchAmount, inc, index) }));
+    }
     return sortedBatchMonths.map((month) => {
       const manualValue = parseFloat(batchManualValues[month] || '');
       return {
@@ -232,7 +242,7 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
         value: batchGenerationMode === 'manual' && !Number.isNaN(manualValue) ? manualValue : parsedBatchAmount
       };
     });
-  }, [sortedBatchMonths, batchGenerationMode, parsedBatchAmount, batchManualValues]);
+  }, [sortedBatchMonths, batchGenerationMode, parsedBatchAmount, batchManualValues, batchIncrement]);
   const batchPreviewTotal = useMemo(() => batchPreviewRows.reduce((acc, item) => acc + item.value, 0), [batchPreviewRows]);
 
   useEffect(() => {
@@ -255,6 +265,7 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
     setBatchMonthCount(3);
     setBatchSelectionMode('auto');
     setBatchGenerationMode('fixed');
+    setBatchIncrement('10');
     setBatchDueDay('');
     setBatchManualValues({});
     setBatchSelectedMonths([]);
@@ -345,6 +356,20 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
               className="pl-9 pr-8 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-black dark:text-white appearance-none"
             />
           </div>
+          <div className="flex shrink-0 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
+            <button
+              onClick={() => setViewMode('month')}
+              className={`flex items-center gap-1.5 px-3 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'month' ? 'bg-indigo-600 text-white' : 'text-gray-400'}`}
+            >
+              <Calendar size={14} strokeWidth={3} /> Mês
+            </button>
+            <button
+              onClick={() => setViewMode('overview')}
+              className={`flex items-center gap-1.5 px-3 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'overview' ? 'bg-indigo-600 text-white' : 'text-gray-400'}`}
+            >
+              <LayoutList size={14} strokeWidth={3} /> Visão geral
+            </button>
+          </div>
           {!isPublic && (
             <div className="flex items-center gap-2 shrink-0">
               <div className="flex bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
@@ -391,6 +416,13 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
               >
                 <Calendar size={16} strokeWidth={3} /> Lançar vários meses
               </button>
+              <button
+                onClick={() => setShowAdjustModal(true)}
+                disabled={isSaving}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-slate-700 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-sm active:scale-[0.98] disabled:opacity-50"
+              >
+                <TrendingUp size={16} strokeWidth={3} /> Reajustar
+              </button>
             </div>
           )}
         </div>
@@ -401,6 +433,9 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
         </div>
       )}
 
+      {viewMode === 'overview' ? (
+        <LedgerOverview ledger={ledger} onSelectMonth={(m) => { setSelectedMonth(m); setViewMode('month'); }} />
+      ) : (<>
       {/* STATS CARDS - IMPROVED DESIGN */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <div className="bg-gray-50/50 dark:bg-slate-900/50 p-4 rounded-[24px] border border-gray-100 dark:border-slate-800 shadow-sm flex flex-col justify-between min-w-0">
@@ -546,6 +581,7 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
           ))
         )}
       </div>
+      </>)}
 
       {/* CONFIRM DIALOGS */}
       <ConfirmDialog 
@@ -669,22 +705,29 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
 
               <div className="space-y-3">
                 <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Modo de geração</p>
-                <div className="grid md:grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   {[
                     { value: 'fixed', label: 'Recorrente fixa' },
+                    { value: 'progressive', label: 'Progressiva' },
                     { value: 'installment', label: 'Parcelada' },
                     { value: 'manual', label: 'Manual' }
                   ].map((option) => (
                     <button
                       key={option.value}
                       type="button"
-                      onClick={() => setBatchGenerationMode(option.value as 'fixed' | 'installment' | 'manual')}
+                      onClick={() => setBatchGenerationMode(option.value as 'fixed' | 'progressive' | 'installment' | 'manual')}
                       className={`p-3 rounded-2xl border text-xs font-black uppercase tracking-wider ${batchGenerationMode === option.value ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 dark:bg-slate-800 border-gray-100 dark:border-slate-700 text-gray-500 dark:text-slate-300'}`}
                     >
                       {option.label}
                     </button>
                   ))}
                 </div>
+                {batchGenerationMode === 'progressive' && (
+                  <div className="max-w-xs">
+                    <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Aumento por mês (R$)</label>
+                    <input type="number" step="0.01" value={batchIncrement} onChange={(e) => setBatchIncrement(e.target.value)} className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold" />
+                  </div>
+                )}
               </div>
 
               <div className="space-y-3">
@@ -761,6 +804,19 @@ const LedgerDetail: React.FC<{ isPublic?: boolean }> = ({ isPublic = false }) =>
             </div>
           </div>
         </div>
+      )}
+
+      {showAdjustModal && !isPublic && (
+        <ProgressiveAdjustModal
+          ledger={ledger}
+          isSaving={isSaving}
+          initialMonth={selectedMonth}
+          onClose={() => setShowAdjustModal(false)}
+          onApply={async (entries) => {
+            await updateLedger({ ...ledger, entries });
+            setShowAdjustModal(false);
+          }}
+        />
       )}
     </div>
   );
